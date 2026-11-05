@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>Mesh Foundry · Authoring proof</title
+  ><style>
+    body {
+      margin: 0;
+      background: #17191d;
+      color: #eee;
+      font: 14px system-ui;
+    }
+    header {
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0;
+    }
+    small {
+      color: #b9bec8;
+    }
+    button,
+    select {
+      background: #30343c;
+      color: white;
+      border: 1px solid #666;
+      padding: 8px;
+    }
+    canvas {
+      display: block;
+    }
+    p {
+      margin: 0 24px;
+    }
+  </style>
+  <header>
+    <h1>Mesh Foundry</h1>
+    <small>Authoring proof · unaccepted fixture</small
+    ><select id="clip" aria-label="Animation">
+      <option>neutral</option>
+      <option>walk</option>
+      <option>fishing_idle</option></select
+    ><button id="variant">Show edited material</button
+    ><button id="pause">Pause</button>
+  </header>
+  <p id="status">Loading local GLB…</p>
+  <script type="module" src="/scripts/proof-viewer.js"></script>
+</html>

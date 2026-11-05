@@ -1,0 +1,47 @@
+{
+  "name": "mesh-foundry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "proof:preview": "vite --host 127.0.0.1",
+    "proof:build": "vite build",
+    "proof:verify": "node scripts/verify-glb.mjs",
+    "proof:generate": "node scripts/generate-proof.mjs",
+    "proof:browser": "node scripts/verify-browser.mjs",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "start": "tsx server/main.ts",
+    "cli": "tsx scripts/cli.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:browser": "tsx scripts/studio-browser.ts",
+    "format": "prettier --write client server shared tests scripts *.json *.md docs vite.config.ts index.html proof.html",
+    "format:check": "prettier --check client server shared tests scripts *.json *.md docs vite.config.ts index.html proof.html"
+  },
+  "dependencies": {
+    "@fastify/static": "10.1.10",
+    "@fontsource/dm-sans": "5.3.0",
+    "@fontsource/syne": "5.3.0",
+    "@radix-ui/react-select": "2.4.1",
+    "fastify": "5.12.8",
+    "gltf-validator": "2.0.0-dev.3.10",
+    "motion": "14.9.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5",
+    "three": "0.186.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.187.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "7.3.7"
+  }
+}
