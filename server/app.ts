@@ -4,14 +4,25 @@ import { randomBytes } from "node:crypto";
 import { join, resolve } from "node:path";
 import { readFile, writeFile, mkdir, unlink, open } from "node:fs/promises";
 import { homedir } from "node:os";
+import { References } from "./references.js";
 import { Store, Conflict } from "./store.js";
 import { id } from "../shared/schema.js";
 export const defaultRoot = () =>
   process.env.MESH_FOUNDRY_DATA_DIR ??
   join(homedir(), "Library/Application Support/Mesh Foundry");
-export async function makeApp(root: string, port = 4323) {
+export async function makeApp(
+  root: string,
+  port = 4323,
+  staticRoot = resolve("dist"),
+) {
   const store = new Store(root);
   await store.init();
+  const references = new References(store, {
+    blender: process.env.MESH_FOUNDRY_BLENDER ?? "/opt/homebrew/bin/blender",
+    sceneCheckout: process.env.SCENE_LOOM_CLI_DIR,
+    sceneRoot: process.env.SCENE_LOOM_DATA_DIR,
+  });
+  await references.recover();
   const agentToken = randomBytes(32).toString("hex"),
     ownerToken = randomBytes(32).toString("hex");
   const app = Fastify({ bodyLimit: 180 * 1024 * 1024 });
@@ -53,6 +64,35 @@ export async function makeApp(root: string, port = 4323) {
       store.backups(req.params.id),
     );
   }
+  for (const prefix of ["/api", "/agent"]) {
+    app.post(`${prefix}/projects/:id/renders/:rid/cancel`, async (req: any) =>
+      references.cancel(req.params.id, req.params.rid),
+    );
+    app.post(`${prefix}/projects/:id/renders`, async (req: any) =>
+      references.generate(req.params.id, req.body),
+    );
+    app.post(`${prefix}/projects/:id/handoffs/:hid/cancel`, async (req: any) =>
+      references.cancelHandoff(req.params.id, req.params.hid),
+    );
+    app.post(`${prefix}/projects/:id/handoffs`, async (req: any) =>
+      references.prepare(req.params.id, req.body),
+    );
+    app.post(`${prefix}/projects/:id/handoffs/:hid/send`, async (req: any) =>
+      references.resume(req.params.id, req.params.hid),
+    );
+  }
+  app.get("/api/projects/:id/renders/:rid/:view", async (req: any, reply) => {
+    const p = await store.read(req.params.id),
+      r = p.renderSets.find(
+        (r) => r.id === req.params.rid && r.status === "completed",
+      ),
+      o = r?.outputs.find((o) => o.view === req.params.view);
+    if (!o) throw Error("Render output not found");
+    return reply
+      .type("image/png")
+      .header("X-Content-Type-Options", "nosniff")
+      .send(await references.bytes(o.hash));
+  });
   app.post("/agent/projects", async (req) => store.create(req.body));
   app.post("/agent/projects/:id/apply", async (req: any) =>
     store.apply(req.params.id, req.body),
@@ -84,9 +124,10 @@ export async function makeApp(root: string, port = 4323) {
         .send(result.bytes);
     },
   );
-  await app.register(statics, { root: resolve("dist"), wildcard: false });
+  // Resolve build assets per request so a rebuild can introduce new hashed filenames.
+  await app.register(statics, { root: staticRoot, wildcard: true });
 
-  return { app, store, agentToken };
+  return { app, store, agentToken, references };
 }
 export async function start() {
   const root = defaultRoot();

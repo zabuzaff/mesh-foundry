@@ -1,3 +1,4 @@
+import { ReferencePanel } from "./References";
 import { StudioSelect } from "./Select";
 import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
@@ -186,7 +187,7 @@ function App() {
     return f ? `/api/projects/${p!.id}/revisions/${r!.id}/files/${f.id}` : "";
   }
   async function copy(action: string) {
-    const prompt = `Work with Mesh Foundry project ${p?.id ?? "[choose project]"}${asset ? `, asset ${asset.id}` : ""}${revision ? `, exact revision ${revision.id}` : ""}.\nRead ${repo}/docs/agent-interface.md first. Run npm --silent run cli -- read ${p?.id ?? "PROJECT_ID"} from ${repo} with MESH_FOUNDRY_DATA_DIR set to ${JSON.stringify(dataRoot.current)}. Read current decisions, accepted versions, current task and unresolved feedback before editing.\n${action}\nPreserve accepted revisions and owner feedback; publish a new candidate through the CLI. Do not accept work or modify game/Scene Loom projects without explicit instructions.\nMy direction: `;
+    const prompt = `Work with Mesh Foundry project ${p?.id ?? "[choose project]"}${asset ? `, asset ${asset.id}` : ""}${revision ? `, exact revision ${revision.id}` : ""}.\nRead ${repo}/docs/agent-interface.md first. Run npm --silent run cli -- read ${p?.id ?? "PROJECT_ID"} from ${repo} with MESH_FOUNDRY_DATA_DIR set to ${JSON.stringify(dataRoot.current)}. Discover pinned reference sets with cli renders and durable transfer state with cli handoffs before generating or sending images. Read current decisions, accepted versions, current task and unresolved feedback before editing.\n${action}\nPreserve accepted revisions and owner feedback; publish a new candidate through the CLI. Do not accept work or modify game/Scene Loom projects without explicit instructions.\nMy direction: `;
     try {
       await navigator.clipboard.writeText(prompt);
       setCopied(action);
@@ -716,6 +717,24 @@ function App() {
                   </div>
                 </div>
               </>
+            )}
+            {p && revision && revision.stage !== "sketch" && (
+              <ReferencePanel
+                key={`${p.id}/${revision.id}`}
+                p={p}
+                revisionId={revision.id}
+                onRefresh={() => {
+                  const pid = p.id;
+                  get("/api/projects/" + pid)
+                    .then((data) => {
+                      if (selectedProject.current === pid)
+                        setP((old) =>
+                          old && old.version >= data.version ? old : data,
+                        );
+                    })
+                    .catch(() => {});
+                }}
+              />
             )}
           </main>
           <aside className="inspector">

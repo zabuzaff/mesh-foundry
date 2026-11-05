@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { renderSet, handoff } from "./references.js";
 export const id = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/);
 const text = z.string().max(20000);
 const vec = z.tuple([
@@ -98,6 +99,8 @@ export const project = z
         .strict(),
     ),
     accepted: z.record(z.string(), id),
+    renderSets: z.array(renderSet).default([]),
+    handoffs: z.array(handoff).default([]),
     receipts: z
       .array(
         z

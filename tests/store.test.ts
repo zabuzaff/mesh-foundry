@@ -414,3 +414,48 @@ test("original GLB material and texture references must validate before publicat
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("static assets introduced by a rebuild are served without restarting", async () => {
+  const root = await mkdtemp(join(tmpdir(), "foundry-static-test-"));
+  const web = join(root, "web");
+  await mkdir(join(web, "assets"), { recursive: true });
+  await writeFile(join(web, "index.html"), "old build");
+  const { app } = await makeApp(join(root, "data"), 4323, web);
+  try {
+    await app.ready();
+    await writeFile(
+      join(web, "assets", "new-hash.js"),
+      "console.log('new build')",
+    );
+    await writeFile(
+      join(web, "assets", "new-hash.css"),
+      "body { color: white; }",
+    );
+    await writeFile(
+      join(web, "index.html"),
+      '<script src="/assets/new-hash.js"></script>',
+    );
+    const headers = { host: "127.0.0.1:4323" };
+    const page = await app.inject({ url: "/", headers });
+    assert.match(page.body, /new-hash.js/);
+    for (const name of ["new-hash.js", "new-hash.css"]) {
+      const response = await app.inject({ url: "/assets/" + name, headers });
+      assert.equal(response.statusCode, 200);
+    }
+    assert.equal(
+      (await app.inject({ url: "/assets/missing.js", headers })).statusCode,
+      404,
+    );
+    assert.equal(
+      (await app.inject({ url: "/api/projects", headers })).statusCode,
+      200,
+    );
+    assert.equal(
+      (await app.inject({ url: "/agent/projects", headers })).statusCode,
+      401,
+    );
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

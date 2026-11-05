@@ -4,7 +4,7 @@ Mesh Foundry is authored from Codex chats. Use its CLI; do not edit running proj
 
 ## Start and discover
 
-From the repository, use Node.js 22.12+, `npm ci`, `npm run build`, then `npm start`. Default studio URL: http://127.0.0.1:4323. `MESH_FOUNDRY_DATA_DIR` overrides the default `~/Library/Application Support/Mesh Foundry` and must be absolute. The service binds only to loopback and takes a single-service lock. Restart after rebuilding: the service registers the built static files at startup.
+From the repository, use Node.js 22.12+, `npm ci`, `npm run build`, then `npm start`. Default studio URL: http://127.0.0.1:4323. `MESH_FOUNDRY_DATA_DIR` overrides the default `~/Library/Application Support/Mesh Foundry` and must be absolute. The service binds only to loopback and takes a single-service lock. Restart after server-code changes. Static filenames are resolved per request, so a rebuild can introduce new hashed assets while the service runs.
 
 Use the same data-root environment for the CLI. It reads the protected runtime.json for its service address and agent credential; never paste that credential into prompts or source. Copy-ready prompts preserve the active data-root path. Example:
 
@@ -102,10 +102,54 @@ npm --silent run cli -- export PROJECT_ID /absolute/new-bundle.json
 npm --silent run cli -- import /absolute/bundle.json
 ```
 
-Restore input: `{"backupId":"RETURNED_FILENAME.json","expectedVersion":3}`. Restoration advances version and clears replay receipts. A missing/corrupt primary requires explicit `{"backupId":"RETURNED_FILENAME.json","recoverCorrupt":true}`; existing damaged bytes are preserved in recovery/. Healthy projects cannot bypass version checks through corrupt recovery. Inspect owner intent before intentional rollback.
+Restore input: `{"backupId":"RETURNED_FILENAME.json","expectedVersion":3}`. Restoration advances version and clears replay receipts. A missing/corrupt primary requires explicit `{"backupId":"RETURNED_FILENAME.json","recoverCorrupt":true}`; existing damaged bytes are preserved in recovery/. Healthy projects cannot bypass version checks through corrupt recovery. Inspect owner intent before intentional rollback. Restore rejects while a render or handoff is active for that project; finish or cancel the job, then reread the version before retrying. Ordinary project writes and restores in other projects remain available. Restore/import mark saved running renders without a local process as interrupted immediately; retry with a new render request ID.
 
 Every mutation snapshots previous metadata. Blobs are retained, including those needed by backups; no garbage collection or backup pruning yet. A portable bundle embeds metadata and owned file bytes, verifies hashes and decodes resources again on import. Imports require a new project ID/destination and cannot overwrite an existing project. Bundles are unencrypted personal files. The current service body limit is 180 MB; this JSON/base64 transfer is suitable for the small first workflow, not a large archive format. External backup and Git LFS policy remain open before production asset accumulation.
 
 ## Scene Loom and game boundary
 
-Do not modify Scene Loom or fish.exe automatically. Reference-render generation/handoff and game import remain later phases. When authorized, use Scene Loom's documented CLI to import owned image copies and pin provenance to the exact Foundry revision; never change its live JSON or automatically replace its scene images.
+Do not modify Scene Loom or fish.exe automatically. Reference rendering and explicit selected handoffs are available below; game import remains a later phase. Never change Scene Loom live JSON or automatically replace its scene images.
+
+## Pinned reference renders and Scene Loom handoff
+
+Implements [the approved bounded scope](implementation-plan.md#reference-render-handoff--approved-implementation-scope-2026-11-05). The real fish-exe/startup-journey transfer is **not authorized** by implementation approval. Do not access its personal library during tests.
+
+The service operator configures `MESH_FOUNDRY_BLENDER` (default `/opt/homebrew/bin/blender`), absolute `SCENE_LOOM_CLI_DIR` (the existing checkout with installed dependencies), and absolute `SCENE_LOOM_DATA_DIR`. Start Foundry from its checkout with those variables; the browser cannot supply executable or library paths. Both services must run with their respective explicit data roots. Unconfigured/unavailable connections fail clearly. No automatic installation or startup of Scene Loom occurs. No Scene Loom source/schema change is required.
+
+```sh
+npm --silent run cli -- schema render
+npm --silent run cli -- render PROJECT_ID /absolute/render.json
+npm --silent run cli -- renders PROJECT_ID
+npm --silent run cli -- cancel-render PROJECT_ID RENDER_ID
+npm --silent run cli -- schema handoff
+npm --silent run cli -- handoff PROJECT_ID /absolute/handoff.json
+npm --silent run cli -- handoffs PROJECT_ID
+npm --silent run cli -- send PROJECT_ID HANDOFF_ID
+npm --silent run cli -- cancel-handoff PROJECT_ID HANDOFF_ID
+```
+
+Render input: `{"requestId":"human-r1-ref-001","revisionId":"human-v1"}`. Request ID is the immutable render-set ID. Identical retries return its recorded status/output; reused IDs with different input fail. Deliberate rerenders or failed/interrupted retries use a new ID. Project reads include `renderSets` and `handoffs`, defaulting to empty for older projects. CLI returns success/data for a registered job even if its `status` is failed/cancelled: inspect status/error, not just process exit status.
+
+Rendering pins verified owned GLB bytes plus hashes of every revision source. The trusted packaged Blender script strips animation channels from an intermediate GLB **before import**, retaining declared node transforms/morph weights; armatures use REST. Hidden importer bone-display helpers do not enter framing bounds. Imported lights/cameras are discarded. No asset recipes execute. The versioned neutral preset produces front, right-side and front-right three-quarter images at a shared orthographic scale/centre with fixed CPU Cycles settings. Record includes resolved cameras, bounds, orientation, lighting, colour management, Blender/Node/sharp versions and preset hash. Transparent intermediates are flattened onto exact opaque sRGB #777777; final 1024×1024 PNGs have a visible provenance footer plus full UTF-8 PNG iTXt/EXIF metadata, then are hashed and installed as owned blobs. Study, fixture and unaccepted candidates visibly say UNACCEPTED STUDY REFERENCE. An accepted non-fixture model records acceptance **at render time**, without accepting image quality. Later acceptance/revisions never rewrite old bytes.
+
+Jobs register durably, run serially on a separate job queue and publish a complete three-view manifest atomically. Review writes remain available during rendering. Blender has two CPU threads, a 15-minute timeout and bounded captured output; images are decoded/dimension-checked before publication. Cancel requests stop the active renderer; already-completed sets remain immutable. Restart marks unfinished running jobs interrupted; use a new render ID. Jobs use service-owned temporary directories, cleaned on normal completion/failure/cancellation. Interrupted process leftovers are disposable directories under DATA_ROOT/jobs. This is fixed-purpose rendering, not arbitrary shell/Python execution.
+
+Handoff input:
+
+```json
+{
+  "requestId": "human-r1-transfer-001",
+  "renderSetId": "human-r1-ref-001",
+  "views": ["front", "three-quarter"],
+  "projectId": "explicit-existing-project",
+  "sceneId": "explicit-existing-scene"
+}
+```
+
+`handoff` prepares a durable preview, verifies selected hashes and requires an existing target scene; it imports/publishes nothing. Inspect its source selection, target library/project/scene and existing-support count before explicitly running `send`. The studio shows handoffs only for the selected render set, with its exact set/revision identity and acceptance-at-render label. A different selection requires a new handoff ID. Leaving a prepared handoff unsent has no destination effect. Cancel handoff in the preview (or cancel-handoff in the CLI) closes it without importing/publishing; sending it then requires a new handoff ID. Cancellation never reverses a completed downstream publication.
+
+`send` imports exact owned PNG copies via the existing Scene Loom CLI, persisting each returned ID. It reads fresh destination contentRevision, appends only missing selected IDs to the current ordered supporting-image list, persists its exact batch/request ID, dry-runs, applies identical input and verifies the selected IDs. The sole patch field is supportingAssetIds: notes, title/description, main image, connections and positions are omitted. No eviction when the 30-supporting-image limit is exceeded. Imports can remain unattached after failure; they are never automatically deleted.
+
+Resume the same handoff after failures/ambiguous responses. It rereads the current scene and reconciles existing imported IDs; lost import responses retry identical bytes. Conflicts allocate a fresh attempt and recompute from current content, with at most three attempts per send. The journal retains attempts, digests, dry-run/results and completion revision. It never blindly replays a stale supporting list, including outside the destination's 100-receipt window. Completed handoffs are historical: retries do not reattach images later removed by the owner. Imported journals cannot execute a path different from the current operator-configured connection; prepare a new handoff for a different connection. Portable export/import/backups include and verify render blobs and provenance. As with existing portable projects, import into a separate library, not over an existing project.
+
+Use `SCENE_LOOM_TEST_CHECKOUT=/absolute/scene-loom npm run test:references` for opt-in real Blender/CLI/browser integration. It creates unique absolute temporary libraries and synthetic IDs, starts only its own Scene Loom service, and removes those libraries/processes in cleanup. Generate proof fixtures and build first; installed Chrome and Blender are required. Diagnostic captures/manifests remain in ignored artifacts. Never substitute personal defaults or the intended real consumer for these fixtures.

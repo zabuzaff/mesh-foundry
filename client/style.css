@@ -1179,3 +1179,77 @@ button:focus-visible {
 .select-menu.project-menu {
   min-width: min(290px, calc(100vw - 24px));
 }
+
+.reference-panel {
+  margin-top: 24px;
+}
+.reference-panel p {
+  overflow-wrap: anywhere;
+}
+.reference-panel label {
+  display: block;
+  margin: 12px 0;
+}
+.reference-panel input:not([type="checkbox"]) {
+  width: 100%;
+  margin-top: 6px;
+}
+.reference-images {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0;
+}
+.reference-images img {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+}
+.reference-images span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.reference-status {
+  color: #e8d9b6;
+}
+.handoff {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #363d47;
+}
+.reference-panel .muted {
+  color: #b7c0cc;
+  font-size: 12px;
+}
+
+.reference-panel {
+  border-top: 1px solid #363d47;
+  padding-top: 24px;
+}
+.reference-images {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.reference-panel input:not([type="checkbox"]) {
+  background: #1c2026;
+  color: #eef0f5;
+  border: 1px solid #48515e;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  caret-color: #b6c9f2;
+}
+.reference-panel input::placeholder {
+  color: #b7c0cc;
+}
+.reference-panel input[type="checkbox"] {
+  accent-color: #b6c9f2;
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 600px) {
+  .reference-images {
+    grid-template-columns: 1fr;
+  }
+}

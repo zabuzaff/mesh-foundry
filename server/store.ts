@@ -27,6 +27,7 @@ export class Conflict extends Error {}
 const now = () => new Date().toISOString();
 export class Store {
   private queue: Promise<unknown> = Promise.resolve();
+  private referenceJobs = new Map<string, number>();
   constructor(public root: string) {
     if (!isAbsolute(root)) throw Error("Data directory must be absolute");
   }
@@ -38,6 +39,30 @@ export class Store {
     const next = this.queue.then(fn);
     this.queue = next.catch(() => {});
     return next;
+  }
+  // Acquire/release through the same queue as restore; work itself does not hold
+  // the storage lock, so feedback and unrelated project writes stay available.
+  async withReferenceJob<T>(pid: string, work: () => Promise<T>): Promise<T> {
+    id.parse(pid);
+    await this.serial(async () => {
+      this.referenceJobs.set(pid, (this.referenceJobs.get(pid) ?? 0) + 1);
+    });
+    try {
+      return await work();
+    } finally {
+      await this.serial(async () => {
+        const remaining = (this.referenceJobs.get(pid) ?? 1) - 1;
+        if (remaining) this.referenceJobs.set(pid, remaining);
+        else this.referenceJobs.delete(pid);
+      });
+    }
+  }
+  interruptDetachedRenders(p: Project, reason: string) {
+    for (const render of p.renderSets)
+      if (render.status === "running") {
+        render.status = "interrupted";
+        render.error = reason + " Use a new request ID to rerender.";
+      }
   }
   path(pid: string) {
     return join(this.root, "projects", id.parse(pid));
@@ -110,6 +135,35 @@ export class Store {
       )
         throw Error("Invalid parent revision");
     }
+    for (const rs of p.renderSets) {
+      const rev = p.revisions.find(
+        (r) => r.id === rs.revisionId && r.assetId === rs.assetId,
+      );
+      if (
+        !rev ||
+        !rev.files.some((f) => f.id === rs.modelFileId && f.kind === "model") ||
+        JSON.stringify(rs.sources) !==
+          JSON.stringify(rev.files.map((f) => ({ id: f.id, hash: f.hash })))
+      )
+        throw Error("Invalid render provenance");
+      if (
+        rs.status === "completed" &&
+        (rs.outputs.length !== 3 ||
+          new Set(rs.outputs.map((o) => o.view)).size !== 3 ||
+          !rs.resolved)
+      )
+        throw Error("Incomplete render set");
+    }
+    for (const h of p.handoffs)
+      if (
+        !p.renderSets.some(
+          (r) => r.id === h.renderSetId && r.status === "completed",
+        )
+      )
+        throw Error("Missing handoff render set");
+    for (const entries of [p.renderSets, p.handoffs])
+      if (new Set(entries.map((e) => e.id)).size !== entries.length)
+        throw Error("Duplicate reference ID");
     for (const [aid, rid] of Object.entries(p.accepted))
       if (!p.revisions.some((r) => r.id === rid && r.assetId === aid))
         throw Error("Invalid accepted reference");
@@ -186,6 +240,8 @@ export class Store {
         accepted: {},
         acceptance: [],
         receipts: [],
+        renderSets: [],
+        handoffs: [],
       };
       await this.publishNew(p);
       return p;
@@ -308,7 +364,7 @@ export class Store {
       return { version: p.version, replayed: false };
     });
   }
-  private async installBlob(digest: string, bytes: Buffer) {
+  async installBlob(digest: string, bytes: Buffer) {
     if (hash(bytes) !== digest) throw Error("Blob hash mismatch");
     const destination = join(this.root, "blobs", digest);
     const verify = async () => {
@@ -366,6 +422,10 @@ export class Store {
   }
   async restore(pid: string, input: unknown) {
     return this.serial(async () => {
+      if (this.referenceJobs.has(pid))
+        throw new Conflict(
+          "A reference job is active for this project; finish or cancel it before restoring a backup",
+        );
       const d = z
         .object({
           backupId: z.string().regex(/^[\w-]+\.json$/),
@@ -391,11 +451,10 @@ export class Store {
       );
       this.validate(p);
       if (p.id !== pid) throw Error("Backup identity mismatch");
-      for (const r of p.revisions)
-        for (const f of r.files) {
-          if (hash(await readFile(join(this.root, "blobs", f.hash))) !== f.hash)
-            throw Error("Backup file is missing or corrupt");
-        }
+      for (const f of this.files(p)) {
+        if (hash(await readFile(join(this.root, "blobs", f.hash))) !== f.hash)
+          throw Error("Backup file is missing or corrupt");
+      }
       if (!current) {
         await mkdir(join(this.path(pid), "recovery"), { recursive: true });
         await copyFile(
@@ -407,20 +466,41 @@ export class Store {
       }
       p.version = current ? current.version + 1 : Date.now();
       p.receipts = [];
+      this.interruptDetachedRenders(
+        p,
+        "Restored render has no active process.",
+      );
       p.updatedAt = now();
       await this.save(p, current);
       return p;
     });
   }
+  files(p: Project) {
+    return [
+      ...p.revisions.flatMap((r) => r.files),
+      ...p.renderSets.flatMap((r) =>
+        r.outputs.map((o) => ({ ...o, kind: "image" as const })),
+      ),
+    ];
+  }
+  async updateReferences(pid: string, fn: (p: Project) => void) {
+    return this.serial(async () => {
+      const old = await this.read(pid),
+        p = structuredClone(old);
+      fn(p);
+      p.version++;
+      p.updatedAt = now();
+      await this.save(p, old);
+    });
+  }
   async bundle(pid: string) {
     const p = await this.read(pid);
     const blobs: Record<string, string> = {};
-    for (const r of p.revisions)
-      for (const f of r.files) {
-        const b = await readFile(join(this.root, "blobs", f.hash));
-        if (hash(b) !== f.hash) throw Error("Corrupt export file");
-        blobs[f.hash] = b.toString("base64");
-      }
+    for (const f of this.files(p)) {
+      const b = await readFile(join(this.root, "blobs", f.hash));
+      if (hash(b) !== f.hash) throw Error("Corrupt export file");
+      blobs[f.hash] = b.toString("base64");
+    }
     return { format: "mesh-foundry-1", project: p, blobs };
   }
   async importBundle(input: unknown) {
@@ -451,6 +531,15 @@ export class Store {
               "Imported Blender verification must be re-established locally",
             );
         }
+      for (const rs of b.project.renderSets)
+        for (const f of rs.outputs) {
+          const bytes = Buffer.from(b.blobs[f.hash] ?? "", "base64");
+          if (hash(bytes) !== f.hash || bytes.length !== f.size)
+            throw Error("Render bundle hash mismatch");
+          const actual = await inspectBytes("image", bytes);
+          if (actual.mime !== "image/png")
+            throw Error("Render bundle MIME mismatch");
+        }
       for (const [digest, base64] of Object.entries(b.blobs))
         if (hash(Buffer.from(base64, "base64")) !== digest)
           throw Error("Bundle hash mismatch");
@@ -458,6 +547,10 @@ export class Store {
         const bytes = Buffer.from(base64, "base64");
         await this.installBlob(digest, bytes);
       }
+      this.interruptDetachedRenders(
+        b.project,
+        "Imported render has no active process.",
+      );
       await this.publishNew(b.project);
       return b.project;
     });
