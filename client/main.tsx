@@ -6,8 +6,7 @@ import { motion, AnimatePresence, MotionConfig } from "motion/react";
 import { Disclosure, Selection, Transport, ease } from "./MotionUI";
 import type { Project } from "../shared/schema";
 import type { CameraState, Pin } from "./Viewer";
-import "@fontsource/syne/600.css";
-import "@fontsource/dm-sans/400.css";
+import "./fonts.css";
 import "./style.css";
 const Viewer = lazy(() =>
   import("./Viewer").then((m) => ({ default: m.Viewer })),
@@ -258,7 +257,9 @@ function App() {
         <header className="topbar">
           <a href="/" className="brand">
             <img src="/mark.svg" alt="" />
-            Mesh Foundry
+            <span>
+              Mesh Foundry<span className="brand-period">.</span>
+            </span>
           </a>
           <span className="divider" />
           <StudioSelect
@@ -276,7 +277,7 @@ function App() {
               }))}
           />
 
-          <span className="connection">
+          <span className="connection" role="status">
             {connected ? "Local studio" : "Connection lost · retrying"}
           </span>
           <button onClick={() => copy("Continue the current project task.")}>

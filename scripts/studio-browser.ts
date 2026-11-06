@@ -77,6 +77,27 @@ try {
     .waitFor();
   await page.locator("canvas").waitFor();
   await page.waitForTimeout(700);
+  await page.evaluate(() => document.fonts.ready);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      return {
+        ground: style.getPropertyValue("--ground").trim(),
+        accent: style.getPropertyValue("--accent").trim(),
+        wordmark: getComputedStyle(document.querySelector(".brand")!)
+          .fontWeight,
+        displayLoaded: document.fonts.check('800 28px "Syne Variable"'),
+        uiLoaded: document.fonts.check('400 13px "DM Sans Variable"'),
+      };
+    }),
+    {
+      ground: "#101215",
+      accent: "#abbcff",
+      wordmark: "800",
+      displayLoaded: true,
+      uiLoaded: true,
+    },
+  );
   const projectMenu = page.getByRole("combobox", {
     name: "Project",
     exact: true,
@@ -316,6 +337,27 @@ try {
     fullPage: true,
   });
   await page.keyboard.press("Escape");
+  await service.store.create({ id: "empty-studio", name: "Empty studio" });
+  await page.reload();
+  await choose("Project", "Empty studio");
+  await page
+    .getByRole("heading", { name: "Your next idea starts here." })
+    .waitFor();
+  assert(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await page.screenshot({
+    path: "artifacts/studio-empty-narrow.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.waitForTimeout(350);
+  await page.screenshot({
+    path: "artifacts/studio-empty-desktop.png",
+    fullPage: true,
+  });
   assert.deepEqual(errors, []);
   assert.deepEqual(failed, []);
   await writeFile(

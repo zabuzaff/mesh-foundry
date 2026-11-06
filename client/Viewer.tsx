@@ -68,7 +68,7 @@ export function Viewer({
       });
     }
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#1c2026");
+    scene.background = new THREE.Color("#20242b");
     const view = new THREE.PerspectiveCamera(35, 1, 0.01, 1000);
     view.position.set(3, 2, 4);
     const controls = new OrbitControls(view, renderer.domElement);
@@ -94,7 +94,7 @@ export function Viewer({
     scene.add(grid);
     const marker = new THREE.Mesh(
       new THREE.SphereGeometry(0.022, 12, 8),
-      new THREE.MeshBasicMaterial({ color: "#c5d5ff", depthTest: false }),
+      new THREE.MeshBasicMaterial({ color: "#abbcff", depthTest: false }),
     );
     marker.renderOrder = 999;
     marker.visible = false;

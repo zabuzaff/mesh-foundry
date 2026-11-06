@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-06T00:32:59.242411+00:00",
+  "title": "Design System: Mesh Foundry",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "menu",
+        "value": "0 12px 30px #0005",
+        "purpose": "Portaled studio selectors."
+      },
+      {
+        "name": "transport",
+        "value": "0 4px 15px #0002",
+        "purpose": "Playback control surface."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-ease",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Menu and control continuity."
+      },
+      {
+        "name": "menu-enter",
+        "value": "180ms",
+        "purpose": "Selector opening."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide",
+        "value": "1600px"
+      },
+      {
+        "name": "compact",
+        "value": "1150px"
+      },
+      {
+        "name": "narrow",
+        "value": "650px"
+      },
+      {
+        "name": "reference-stack",
+        "value": "600px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "html": "<button class=\"ds-primary\">Save feedback</button>",
+      "css": ".ds-primary {font: 13px var(--font-ui); border: 0; border-radius: 6px; cursor: pointer; transition: background-color .16s, color .16s; background: var(--accent); color: var(--on-accent); padding: 13px 18px; font-size: 11px; font-weight: 650; } .ds-primary:hover {background: var(--accent-hover);} .ds-primary:focus-visible {outline: 2px solid var(--accent); outline-offset: 3px;} .ds-primary:disabled {opacity: .45; cursor: default;}",
+      "refersTo": "button-primary"
+    },
+    {
+      "name": "Quiet action",
+      "kind": "button",
+      "html": "<button class=\"ds-quiet\">Copy edit prompt</button>",
+      "css": ".ds-quiet {font: 13px var(--font-ui); border: 0; border-radius: 6px; cursor: pointer; transition: background-color .16s, color .16s; background: transparent; color: var(--muted); padding: 9px 12px;} .ds-quiet:hover {background: var(--surface-hover); color: var(--text);} .ds-quiet:focus-visible {outline: 2px solid var(--accent); outline-offset: 3px;}",
+      "refersTo": "button-quiet"
+    },
+    {
+      "name": "Feedback field",
+      "kind": "input",
+      "html": "<textarea class=\"ds-feedback\" aria-label=\"Feedback\" placeholder=\"What would you change?\"></textarea>",
+      "css": ".ds-feedback {font: 12px var(--font-ui); line-height: 1.85; background: var(--ground); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 12px; width: 100%; min-height: 110px; resize: vertical; caret-color: var(--accent);} .ds-feedback::placeholder {color: var(--muted);} .ds-feedback:focus {border-color: var(--accent);} .ds-feedback:focus-visible {outline: 2px solid var(--accent); outline-offset: 3px;}"
+    },
+    {
+      "name": "Workspace navigation",
+      "kind": "nav",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><button aria-current=\"page\">Assets</button><button>Animation</button></nav>",
+      "css": ".ds-nav {display:flex; gap:6px;} .ds-nav button {font: 13px var(--font-ui); border: 0; border-radius: 6px; cursor: pointer; transition: background-color .16s, color .16s; background: transparent; color:var(--muted); padding:8px 10px;} .ds-nav button[aria-current] {background:var(--surface-hover); color:var(--text);} .ds-nav button:hover {background:var(--surface-hover);} .ds-nav button:focus-visible {outline: 2px solid var(--accent); outline-offset: 3px;}"
+    },
+    {
+      "name": "Review surface",
+      "kind": "card",
+      "html": "<section class=\"ds-stage\" aria-label=\"Model review\"><span>revision · Candidate</span></section>",
+      "css": ".ds-stage {background:var(--card); color:var(--soft); border-radius:var(--card-radius); padding:16px 18px; min-height:160px;} .ds-stage span {font:10px var(--font-ui); background:var(--ground); padding:4px 6px; border-radius:4px;}",
+      "refersTo": "review-stage"
+    }
+  ],
+  "narrative": {
+    "northStar": "Scene Loom — After Hours",
+    "overview": "Scene Loom’s visual system applied to Mesh Foundry’s artwork-led asset review worktable. Preserve exact revision identity and deliberate owner decisions.",
+    "keyCharacteristics": [
+      "Expressive Syne headings",
+      "Quiet DM Sans controls",
+      "Graphite surfaces and pale blue actions"
+    ],
+    "dos": [
+      "Follow the shared visual tokens and fonts.",
+      "Keep technical validation separate from owner acceptance."
+    ],
+    "donts": [
+      "Do not add dashboard metrics or ornamental motion.",
+      "Do not copy storyboard behavior into asset review."
+    ]
+  }
+}
