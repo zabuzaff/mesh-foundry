@@ -1,5 +1,6 @@
 import {
   mkdir,
+  mkdtemp,
   link,
   readFile,
   writeFile,
@@ -21,14 +22,27 @@ import {
   review,
   type Project,
   revision,
+  sceneLoomTarget,
 } from "../shared/schema.js";
 import { inspect, hash, inspectBytes } from "./files.js";
+import { checkPublication } from "../shared/progression.js";
 export class Conflict extends Error {}
 const now = () => new Date().toISOString();
+export const sceneLoomLibraryId = (projectId: string) =>
+  "scene-loom-" + hash(id.parse(projectId));
+
+type ReadSceneLoom = (target: z.infer<typeof sceneLoomTarget>) => Promise<{
+  contentRevision: number;
+  sceneIds: string[];
+}>;
+
 export class Store {
   private queue: Promise<unknown> = Promise.resolve();
   private referenceJobs = new Map<string, number>();
-  constructor(public root: string) {
+  constructor(
+    public root: string,
+    private readSceneLoom?: ReadSceneLoom,
+  ) {
     if (!isAbsolute(root)) throw Error("Data directory must be absolute");
   }
   async init() {
@@ -86,6 +100,7 @@ export class Store {
           id: pid,
           name: p.name,
           version: p.version,
+          sceneLoomProjectId: p.sceneLoomProjectId,
           status: "ready",
         });
       } catch {
@@ -95,6 +110,31 @@ export class Store {
     return rows;
   }
   validate(p: Project) {
+    if (
+      p.sceneLoomProjectId &&
+      p.id !== sceneLoomLibraryId(p.sceneLoomProjectId)
+    )
+      throw Error("Incorrect Scene Loom library ID");
+    const pins = new Set<string>();
+    for (const pin of p.sceneLoomPins ?? []) {
+      if (!p.sceneLoomProjectId)
+        throw Error("Scene Loom pins require a linked library");
+      const key = pin.storyboardId + ":" + pin.suggestionId;
+      if (pins.has(key)) throw Error("Duplicate Scene Loom suggestion pin");
+      pins.add(key);
+      if (
+        new Set(pin.sceneIds).size !== pin.sceneIds.length ||
+        !pin.sceneIds.includes(pin.generatedFromSceneId)
+      )
+        throw Error("Invalid linked scene IDs");
+      if (
+        !p.revisions.some(
+          (r) => r.id === pin.revisionId && r.assetId === pin.assetId,
+        )
+      )
+        throw Error("Scene Loom pin must reference an existing asset revision");
+    }
+
     for (const entries of [
       p.categories,
       p.assets,
@@ -195,6 +235,7 @@ export class Store {
     await rename(tmp, path);
   }
   async publishNew(p: Project) {
+    this.validate(p);
     const staging = join(this.root, "projects", ".staging-" + randomUUID());
     await mkdir(staging);
     try {
@@ -266,7 +307,83 @@ export class Store {
         throw new Conflict(
           "Project changed; read current state and retry with a new request ID",
         );
+      const generation = "operations" in data ? data.sceneLoom : undefined;
+      const pins =
+        "operations" in data
+          ? data.operations.filter((op) => op.type === "scene-loom.pin")
+          : [];
+      if (pins.length && !generation)
+        throw Error("Scene Loom pins require a generation target");
+      if (generation && "operations" in data) {
+        if (previous.sceneLoomProjectId !== generation.projectId)
+          throw Error(
+            "Scene Loom generation targets a different asset library",
+          );
+        if (
+          !pins.length ||
+          new Set(pins.map((pin) => pin.suggestionId)).size !== pins.length
+        )
+          throw Error("Provide one pin per selected suggestion");
+        for (const op of data.operations) {
+          if (
+            op.type !== "category.create" &&
+            op.type !== "asset.create" &&
+            op.type !== "revision.publish" &&
+            op.type !== "scene-loom.pin"
+          )
+            throw Error("Operation is not allowed in Scene Loom generation");
+          if (
+            op.type === "revision.publish" &&
+            (op.stage !== "sketch" ||
+              !pins.some(
+                (pin) => pin.revisionId === op.id && pin.assetId === op.assetId,
+              ))
+          )
+            throw Error(
+              "Scene Loom generation can publish only pinned 2D concepts",
+            );
+          if (
+            op.type === "asset.create" &&
+            !pins.some((pin) => pin.assetId === op.asset.id)
+          )
+            throw Error("Scene Loom generation can create only pinned assets");
+        }
+      }
       const p = structuredClone(previous);
+      if (generation) {
+        p.sceneLoomPins = (p.sceneLoomPins ?? []).filter(
+          (pin) =>
+            pin.storyboardId !== generation.storyboardId ||
+            !pins.some((next) => next.suggestionId === pin.suggestionId),
+        );
+        for (const { type: _, ...pin } of pins) {
+          if (
+            !pin.sceneIds.includes(generation.sceneId) ||
+            new Set(pin.sceneIds).size !== pin.sceneIds.length
+          )
+            throw Error("Invalid linked scene IDs");
+          const existing = previous.sceneLoomPins?.find(
+            (candidate) =>
+              candidate.storyboardId === generation.storyboardId &&
+              candidate.suggestionId === pin.suggestionId,
+          );
+          if (
+            existing?.assetId === pin.assetId &&
+            existing.revisionId === pin.revisionId &&
+            existing.sceneIds.length === pin.sceneIds.length &&
+            pin.sceneIds.every((sceneId) => existing.sceneIds.includes(sceneId))
+          ) {
+            p.sceneLoomPins.push(existing);
+            continue;
+          }
+          p.sceneLoomPins.push({
+            ...pin,
+            storyboardId: generation.storyboardId,
+            generatedFromSceneId: generation.sceneId,
+            contentRevision: generation.contentRevision,
+          });
+        }
+      }
       let imported: Awaited<ReturnType<typeof inspect>>[] = [];
       if ("action" in data) {
         const action = data.action;
@@ -309,6 +426,7 @@ export class Store {
             f.resolved = true;
           }
           if (op.type === "revision.publish") {
+            checkPublication(p, op);
             const files = [];
             let clips: { name: string; duration: number }[] = [];
             for (const input of op.files) {
@@ -356,12 +474,139 @@ export class Store {
       p.receipts = p.receipts.slice(-100);
       project.parse(p);
       this.validate(p);
+      const checkSource = async () => {
+        if (!generation) return;
+
+        if (!this.readSceneLoom)
+          throw Error("Scene Loom connection unavailable");
+        const source = await this.readSceneLoom(generation);
+        if (source.contentRevision !== generation.contentRevision)
+          throw new Conflict(
+            "Scene Loom storyboard changed; reread and confirm the source",
+          );
+        if (
+          pins.some((pin) =>
+            pin.sceneIds.some((sceneId) => !source.sceneIds.includes(sceneId)),
+          )
+        )
+          throw Error("Linked scene is missing from the selected storyboard");
+      };
+      if (imported.length) await checkSource();
       // Content-addressed owned copies are installed first. A failed publication
       // may leave unreferenced blobs, never partial visible project records.
       for (const item of imported)
         await this.installBlob(item.file.hash, item.bytes);
+      await checkSource();
       await this.save(p, previous);
       return { version: p.version, replayed: false };
+    });
+  }
+  async jobDirectory(pid: string, kind: "render" | "handoff") {
+    const parent = join(this.root, "jobs", "projects", id.parse(pid));
+    await mkdir(parent, { recursive: true, mode: 0o700 });
+    // Project ownership is in the path before any source/output is written.
+    return mkdtemp(join(parent, kind + "-"));
+  }
+  async legacyJobDirectories() {
+    try {
+      return (await readdir(join(this.root, "jobs")))
+        .filter((name) => /^(render|handoff)-/.test(name))
+        .sort();
+    } catch (e: any) {
+      if (e.code === "ENOENT") return [];
+      throw e;
+    }
+  }
+  // Destructive owner-authorized reset. Never writes to downstream libraries.
+  async clearAssets(pid: string, input: unknown) {
+    return this.serial(async () => {
+      const d = z
+        .object({
+          expectedVersion: z.number().int().nonnegative(),
+          confirmProjectId: id,
+        })
+        .strict()
+        .parse(input);
+      if (d.confirmProjectId !== pid)
+        throw Error("Project confirmation mismatch");
+      if (this.referenceJobs.size)
+        throw new Conflict(
+          "A reference job is active; finish or cancel it first",
+        );
+      const previous = await this.read(pid);
+      if (previous.version !== d.expectedVersion)
+        throw new Conflict("Project changed");
+      const candidates = new Set<string>();
+      const retained = new Set<string>();
+      // Scan every metadata copy, including backups/recovery. Fail closed on
+      // unreadable metadata before changing anything or collecting shared blobs.
+      const scan = async (dir: string, target: Set<string>) => {
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+          const path = join(dir, entry.name);
+          if (entry.isSymbolicLink())
+            throw Error("Unexpected metadata symlink");
+          if (entry.isDirectory()) await scan(path, target);
+          else if (entry.name.endsWith(".json")) {
+            const value = JSON.parse(await readFile(path, "utf8"));
+            const visit = (v: any) => {
+              if (typeof v === "string" && /^[a-f0-9]{64}$/.test(v))
+                target.add(v);
+              else if (Array.isArray(v)) v.forEach(visit);
+              else if (v && typeof v === "object")
+                Object.values(v).forEach(visit);
+            };
+            visit(value);
+          }
+        }
+      };
+      for (const entry of await readdir(join(this.root, "projects"))) {
+        await scan(
+          join(this.root, "projects", entry),
+          entry === pid ? candidates : retained,
+        );
+      }
+      const legacyJobs = await this.legacyJobDirectories();
+      const p = structuredClone(previous);
+      p.assets = [];
+      p.revisions = [];
+      p.feedback = [];
+      p.accepted = {};
+      p.acceptance = [];
+      p.renderSets = [];
+      p.handoffs = [];
+      delete p.sceneLoomPins;
+      p.decisions = p.decisions.filter((d) => !d.scope);
+      const decisionIds = new Set(p.decisions.map((d) => d.id));
+      for (const d of p.decisions)
+        if (d.supersedes && !decisionIds.has(d.supersedes)) delete d.supersedes;
+      p.receipts = [];
+      p.version++;
+      p.updatedAt = now();
+      const cleanup = join(this.path(pid), "asset-cleanup.json");
+      await this.atomic(cleanup, [...candidates]);
+      // Do not create a new snapshot containing the deleted assets.
+      await this.save(p);
+      await rm(join(this.path(pid), "backups"), {
+        recursive: true,
+        force: true,
+      });
+      await rm(join(this.path(pid), "recovery"), {
+        recursive: true,
+        force: true,
+      });
+      await rm(join(this.root, "jobs", "projects", pid), {
+        recursive: true,
+        force: true,
+      });
+      for (const digest of candidates)
+        if (!retained.has(digest))
+          await rm(join(this.root, "blobs", digest), { force: true });
+      await rm(cleanup, { force: true });
+      return {
+        version: p.version,
+        assets: p.assets.length,
+        unattributedJobDirectories: legacyJobs,
+      };
     });
   }
   async installBlob(digest: string, bytes: Buffer) {

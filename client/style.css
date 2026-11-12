@@ -1499,3 +1499,13 @@ textarea:focus {
     font-size: 43px;
   }
 }
+
+.progression-actions {
+  margin: 0 0 24px;
+}
+.progression-actions p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 8px 0 0;
+}

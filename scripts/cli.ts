@@ -8,7 +8,7 @@ const [command, pid, path] = process.argv.slice(2);
 async function main() {
   if (command === "help" || !command) {
     console.log(
-      "Mesh Foundry CLI\nlist | cancel-render PROJECT RENDER_ID | render PROJECT INPUT.json | renders PROJECT | handoff PROJECT INPUT.json | handoffs PROJECT | send PROJECT HANDOFF_ID | cancel-handoff PROJECT HANDOFF_ID | read PROJECT | create INPUT.json | apply PROJECT INPUT.json | backups PROJECT | restore PROJECT INPUT.json | export PROJECT OUTPUT.json | import INPUT.json | schema batch|project|create|render|handoff\nSet absolute MESH_FOUNDRY_DATA_DIR to match the running service. Mutations are JSON files (or - for stdin).",
+      "Mesh Foundry CLI\nlist | scene-loom PROJECT_ID STORYBOARD_ID | clear-assets PROJECT INPUT.json | cancel-render PROJECT RENDER_ID | render PROJECT INPUT.json | renders PROJECT | handoff PROJECT INPUT.json | handoffs PROJECT | send PROJECT HANDOFF_ID | cancel-handoff PROJECT HANDOFF_ID | read PROJECT | create INPUT.json | apply PROJECT INPUT.json | backups PROJECT | restore PROJECT INPUT.json | export PROJECT OUTPUT.json | import INPUT.json | schema batch|project|create|render|handoff\nSet absolute MESH_FOUNDRY_DATA_DIR to match the running service. Mutations are JSON files (or - for stdin).",
     );
     return;
   }
@@ -60,12 +60,18 @@ async function main() {
   } else if (command === "renders" || command === "handoffs")
     route = `/projects/${encodeURIComponent(pid)}`;
   else if (command === "list") route = "/projects";
+  else if (command === "scene-loom")
+    route = `/scene-loom/${encodeURIComponent(pid)}/${encodeURIComponent(path)}`;
   else if (command === "read") route = `/projects/${encodeURIComponent(pid)}`;
   else if (command === "create") {
     route = "/projects";
     method = "POST";
     body = await input(pid);
-  } else if (command === "apply" || command === "restore") {
+  } else if (
+    command === "apply" ||
+    command === "restore" ||
+    command === "clear-assets"
+  ) {
     route = `/projects/${encodeURIComponent(pid)}/${command}`;
     method = "POST";
     body = await input(path);

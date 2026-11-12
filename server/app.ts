@@ -5,8 +5,8 @@ import { join, resolve } from "node:path";
 import { readFile, writeFile, mkdir, unlink, open } from "node:fs/promises";
 import { homedir } from "node:os";
 import { References } from "./references.js";
-import { Store, Conflict } from "./store.js";
-import { id } from "../shared/schema.js";
+import { Store, Conflict, sceneLoomLibraryId } from "./store.js";
+import { id, sceneLoomTarget } from "../shared/schema.js";
 export const defaultRoot = () =>
   process.env.MESH_FOUNDRY_DATA_DIR ??
   join(homedir(), "Library/Application Support/Mesh Foundry");
@@ -15,9 +15,11 @@ export async function makeApp(
   port = 4323,
   staticRoot = resolve("dist"),
 ) {
-  const store = new Store(root);
+  const store: Store = new Store(root, (target) =>
+    references.generationSource(target),
+  );
   await store.init();
-  const references = new References(store, {
+  const references: References = new References(store, {
     blender: process.env.MESH_FOUNDRY_BLENDER ?? "/opt/homebrew/bin/blender",
     sceneCheckout: process.env.SCENE_LOOM_CLI_DIR,
     sceneRoot: process.env.SCENE_LOOM_DATA_DIR,
@@ -93,12 +95,28 @@ export async function makeApp(
       .header("X-Content-Type-Options", "nosniff")
       .send(await references.bytes(o.hash));
   });
+  app.get("/agent/scene-loom/:projectId/:storyboardId", async (req) => {
+    const target = sceneLoomTarget.parse(req.params);
+    const source = await references.generationSource(target);
+    const libraryId = sceneLoomLibraryId(target.projectId);
+    const entry = (await store.list()).find((row) => row.id === libraryId);
+    if (entry && entry.sceneLoomProjectId !== target.projectId)
+      throw Error("Scene Loom library destination is occupied or unreadable");
+    return {
+      ...source,
+      libraryId,
+      library: entry ? await store.read(libraryId) : null,
+    };
+  });
   app.post("/agent/projects", async (req) => store.create(req.body));
   app.post("/agent/projects/:id/apply", async (req: any) =>
     store.apply(req.params.id, req.body),
   );
   app.post("/agent/projects/:id/restore", async (req: any) =>
     store.restore(req.params.id, req.body),
+  );
+  app.post("/agent/projects/:id/clear-assets", async (req: any) =>
+    store.clearAssets(req.params.id, req.body),
   );
   app.post("/agent/import", async (req) => store.importBundle(req.body));
   app.get("/agent/projects/:id/export", async (req: any) =>

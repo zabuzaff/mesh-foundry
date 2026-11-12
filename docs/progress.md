@@ -125,3 +125,140 @@ Owner selected “Refresh it to match Scene Loom” for the existing design brie
 ## 2026-11-06 — revision selection visibility correction
 
 Patched the confirmed review finding: resting revision-trail buttons now use the card surface while the active selection retains surface-hover. Hover behavior remains consistent. Isolated Chrome computed styles confirm distinct selected/resting backgrounds (#282e38 versus #20242b). Production build/typecheck, studio browser workflows, formatting and diff checks pass; refreshed comparison capture inspected. Main-agent review used for this one-line styling correction. No storage, acceptance or source-asset changes; no commit or push.
+
+## 2026-11-07 — asset stage terminology and authorized Pondshift reset
+
+Updated stage display labels to 2D Concepts, 3D Prototypes and Developed Models,
+with concise explanations and an explicit separation of owner acceptance from
+development stage. Stored sketch/study/model values remain compatible. Updated
+revision labels, empty stage messages and copied stage prompts as well.
+
+Added authenticated CLI/service clear-assets with exact project confirmation,
+optimistic version checking, global active-reference-job exclusion, project-wide
+decision preservation, and removal of asset review/reference history and target
+backups/recovery copies. Shared blobs are removed only after scanning all other
+project metadata copies; a durable cleanup manifest supports interrupted cleanup.
+No Scene Loom mutations occur. Existing repository guidance was sufficient; no
+additional tools/dependencies or guidance changes were needed.
+
+At the owner's explicit request, restarted the service safely with its existing
+operator settings and cleared Pondshift through the supported CLI. Verified
+Pondshift version 7 exists with zero assets, revisions, feedback, acceptance,
+render sets and handoffs. Its name, brief, categories and currentTask match the
+pre-reset state. Both existing decisions were asset-scoped and were removed;
+there were no project-wide decisions. Removed 17 unreferenced content-addressed
+blobs and target history copies. No other projects were present. Service remains
+available at http://127.0.0.1:4323. Source files outside service-owned storage
+were not altered.
+
+Verification: build/typecheck, all 20 tests (including isolated reset, version,
+confirmation, active-job and shared-blob coverage), isolated Chrome workflows,
+formatting and diff checks pass. Desktop and 390px renders inspected. Independent
+read-only review identified shared-job exclusion, empty-stage copy and cleanup
+retry resilience; all corrected and reviewer confirmed no remaining blockers.
+Impeccable launcher lacked execute permission; written guidance and rendered
+review used, without automated certification. Existing build chunk-size warning
+remains. No commit, push, deployment or creative acceptance.
+
+## 2026-11-07 — creator-controlled asset progression
+
+Added Copy 3D prototype prompt for selected concepts and Copy developed model
+prompt for selected prototypes, gated by explicit approval of that exact revision.
+Unavailable actions identify the revision requiring approval. Copy revision prompt
+works for every selected stage without requiring approval. Empty 3D stages direct
+the creator to the preceding revision instead of offering an unguarded prompt.
+Selecting another asset resets the stage filter to avoid hiding its selection.
+Copy actions only write clipboard text; they neither generate nor send messages.
+
+Inspected acceptance: owner review already accepts every stage, but its current
+pointer is per asset. Reused existing immutable acceptance history to resolve the
+latest approval per asset/stage, retaining legacy pointer support and unchanged
+schemas/stored stage values. Accepting another stage preserves earlier approval;
+accepting another revision in the same stage supersedes that stage's selection.
+Reference snapshots use the same rule while retaining model/non-fixture guards.
+No approval implies production readiness or automatically approves new work.
+
+Service publication now requires concepts as roots, same-asset parent links for
+3D revisions, adjacent stages for advancement, and exact source approval for
+cross-stage transitions. Same-stage improvement needs no approval. Existing
+projects/backups/imports remain readable; 3D-only assets can be refined through
+same-stage parent links. Legacy regression fixtures now load through portable
+imports instead of relying on the newly prohibited unlinked 3D publication path.
+
+Prompts specify project/asset/revision IDs, immutable source manifests and hashes,
+fresh decisions/feedback/approval checks, linked new candidates and source
+preservation. Concepts request faithful real geometry plus clarification of
+consequential unknowns. Model development refines editable source, explains
+changes, establishes intended production requirements and treats rigging/animation
+as conditional. Prompts and toast support any compatible local agent harness.
+Updated product and agent-interface guidance. Scene Loom's separate storyboard
+asset-list/concept batch workflow was not changed.
+
+Verification: build/typecheck, all 21 storage/security/progression tests, expanded
+isolated Chrome workflows and real isolated Blender/Scene Loom CLI/Chrome handoff
+integration pass. Coverage includes exact and superseded approvals, independent
+assets, skipped/unlinked stages, legacy revision work, same-stage unapproved
+improvement, source manifests, revision prompts at every stage, clipboard-only
+behavior, retained history and narrow overflow. Desktop/narrow progression renders
+inspected. Independent read-only review identified empty-stage, generic prompt
+scope and root-stage bypasses; all corrected and final review found no blockers.
+Impeccable written guidance/rendered review used; launcher remains unavailable,
+with no automated certification claimed. Existing chunk-size warning remains.
+
+Safely restarted Mesh Foundry with existing operator settings after confirming no
+active jobs. All project metadata matched before/after restart; Pondshift remains
+at zero assets. Service is running on loopback port 4323. Tests used disposable
+libraries only. No personal asset mutation, Scene Loom personal data change,
+commit, push, deployment or new creative acceptance.
+
+## 2026-11-07 — review findings patched
+
+Fixed empty-stage live refresh: a waiting stage resolves its first matching new
+revision and pins it, so subsequent publications do not steal the selection.
+Expanded the Chrome progression flow to wait on the empty prototype stage during
+publication, verify the viewer appears automatically, then publish a second
+prototype and verify the first stays selected.
+
+Preserved legacy pointer approvals after later owner actions by consulting saved
+previousRevisionId only when the stage has no explicit acceptance event. Explicit
+newer same-stage approval still wins. Added regression coverage for pointer moves,
+portable round trips and subsequent supersession without changing stored data.
+
+Render/handoff work directories now live under jobs/projects/PROJECT_ID before
+source/output writes. Asset clearing removes only its project's namespace while
+retaining other projects' work and the existing active-job guard. Old unscoped
+render-/handoff- folders cannot be attributed safely from identical source hashes;
+they remain untouched and are reported as unattributedJobDirectories. Regression
+coverage checks owned cleanup, foreign/shared-source preservation, unknown legacy
+folders and active-job rejection. The live library has zero old unscoped job
+folders, so there is no outstanding historical cleanup there.
+
+Verification: build/typecheck, all 23 tests, expanded isolated Chrome workflow,
+real isolated Blender/Scene Loom CLI/browser integration, formatting and diff
+checks pass. Narrow rendered result inspected. Independent read-only review
+confirmed all three fixes with no remaining blockers; rejected hash-based legacy
+attribution was removed before completion. Safely restarted the service with its
+operator settings preserved and verified identical project metadata. Pondshift
+remains at zero assets. No personal asset changes, commit, push or deployment.
+
+## Incoming Scene Loom asset handoff — 2026-11-12
+
+Mesh Foundry resolves one library per stable Scene Loom project ID. The
+read-only lookup checks the exact storyboard's live setting. A scoped apply
+batch can reuse an existing revision or publish a 2D concept with its
+suggestion pin in one commit. Pins retain the storyboard, suggestion, linked
+scenes and reviewed source revision. Publishing on a different storyboard
+preserves existing pins. Older projects remain readable.
+
+The isolated real Scene Loom CLI run (`test:references -- --incoming-only`)
+covered Baseline and a named copy, shared suggestions, repeated lookup and
+batch replay, reuse, independent pins, and switching the toggle off before
+publication. All 23 local tests passed. The integration guide records the
+Scene Loom work still needed for copied prompts, draft suggestions and result
+writeback. No personal data or Scene Loom source was changed.
+
+Review follow-up: scoped generation permits only category creation, asset
+creation, concept publication and suggestion pins. The service checks live
+source eligibility before installing new blobs and again before committing
+metadata. The inbound integration covers rejected unrelated operations and
+verifies that a disabled target leaves the blob directory unchanged.

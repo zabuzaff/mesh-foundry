@@ -53,16 +53,12 @@ Read the project for its version before building a batch:
     },
     {
       "type": "revision.publish",
-      "id": "human-v1",
+      "id": "human-concept-v1",
       "assetId": "human",
-      "stage": "study",
-      "summary": "Initial form and rig",
-      "files": [
-        { "kind": "blend", "path": "/absolute/human.blend" },
-        { "kind": "model", "path": "/absolute/human.glb" },
-        { "kind": "recipe", "path": "/absolute/create-human.py" }
-      ],
-      "toolVersions": { "Blender": "5.2.3" },
+      "stage": "sketch",
+      "summary": "Initial appearance and design",
+      "files": [{ "kind": "image", "path": "/absolute/human-concept.png" }],
+      "toolVersions": {},
       "fixture": false
     },
     {
@@ -132,7 +128,7 @@ Render input: `{"requestId":"human-r1-ref-001","revisionId":"human-v1"}`. Reques
 
 Rendering pins verified owned GLB bytes plus hashes of every revision source. The trusted packaged Blender script strips animation channels from an intermediate GLB **before import**, retaining declared node transforms/morph weights; armatures use REST. Hidden importer bone-display helpers do not enter framing bounds. Imported lights/cameras are discarded. No asset recipes execute. The versioned neutral preset produces front, right-side and front-right three-quarter images at a shared orthographic scale/centre with fixed CPU Cycles settings. Record includes resolved cameras, bounds, orientation, lighting, colour management, Blender/Node/sharp versions and preset hash. Transparent intermediates are flattened onto exact opaque sRGB #777777; final 1024×1024 PNGs have a visible provenance footer plus full UTF-8 PNG iTXt/EXIF metadata, then are hashed and installed as owned blobs. Study, fixture and unaccepted candidates visibly say UNACCEPTED STUDY REFERENCE. An accepted non-fixture model records acceptance **at render time**, without accepting image quality. Later acceptance/revisions never rewrite old bytes.
 
-Jobs register durably, run serially on a separate job queue and publish a complete three-view manifest atomically. Review writes remain available during rendering. Blender has two CPU threads, a 15-minute timeout and bounded captured output; images are decoded/dimension-checked before publication. Cancel requests stop the active renderer; already-completed sets remain immutable. Restart marks unfinished running jobs interrupted; use a new render ID. Jobs use service-owned temporary directories, cleaned on normal completion/failure/cancellation. Interrupted process leftovers are disposable directories under DATA_ROOT/jobs. This is fixed-purpose rendering, not arbitrary shell/Python execution.
+Jobs register durably, run serially on a separate job queue and publish a complete three-view manifest atomically. Review writes remain available during rendering. Blender has two CPU threads, a 15-minute timeout and bounded captured output; images are decoded/dimension-checked before publication. Cancel requests stop the active renderer; already-completed sets remain immutable. Restart marks unfinished running jobs interrupted; use a new render ID. Jobs use service-owned temporary directories, cleaned on normal completion/failure/cancellation. Interrupted process leftovers from new jobs live under DATA_ROOT/jobs/projects/PROJECT_ID, so clear-assets can remove only the selected project’s work. Older unscoped render-/handoff- folders have no reliable ownership; clear-assets preserves them and returns their names in unattributedJobDirectories for manual attribution. Identical source hashes do not prove job ownership. This is fixed-purpose rendering, not arbitrary shell/Python execution.
 
 Handoff input:
 
@@ -153,3 +149,172 @@ Handoff input:
 Resume the same handoff after failures/ambiguous responses. It rereads the current scene and reconciles existing imported IDs; lost import responses retry identical bytes. Conflicts allocate a fresh attempt and recompute from current content, with at most three attempts per send. The journal retains attempts, digests, dry-run/results and completion revision. It never blindly replays a stale supporting list, including outside the destination's 100-receipt window. Completed handoffs are historical: retries do not reattach images later removed by the owner. Imported journals cannot execute a path different from the current operator-configured connection; prepare a new handoff for a different connection. Portable export/import/backups include and verify render blobs and provenance. As with existing portable projects, import into a separate library, not over an existing project.
 
 Use `SCENE_LOOM_TEST_CHECKOUT=/absolute/scene-loom npm run test:references` for opt-in real Blender/CLI/browser integration. It creates unique absolute temporary libraries and synthetic IDs, starts only its own Scene Loom service, and removes those libraries/processes in cleanup. Generate proof fixtures and build first; installed Chrome and Blender are required. Diagnostic captures/manifests remain in ignored artifacts. Never substitute personal defaults or the intended real consumer for these fixtures.
+
+## Stage labels and clearing a project's assets
+
+Stored stage values remain `sketch`, `study`, and `model`. The studio displays
+**2D Concepts** (appearance and design), **3D Prototypes** (real, rotatable meshes
+for form and proportions), and **Developed Models** (more developed assets,
+without a production-readiness guarantee). Owner acceptance is independent.
+
+`npm --silent run cli -- clear-assets PROJECT INPUT.json` is a destructive,
+authenticated service operation. Input is
+`{"expectedVersion":6,"confirmProjectId":"PROJECT"}` with the current version
+and exact project ID. It preserves project configuration, categories and
+project-wide decisions, while removing all assets, revisions, review records,
+render sets, handoff journals, replay receipts and asset decisions. It removes
+that project's backups/recovery copies to prevent deleted assets reappearing.
+References to removed asset decisions in retained decisions are detached.
+Shared blobs remain while any other project metadata copy references them. Project-owned interrupted job folders are removed; older unscoped folders are preserved and reported because ownership cannot safely be inferred.
+No downstream Scene Loom data is changed. All reference jobs must finish or be
+cancelled before clearing. A durable cleanup manifest allows retry after a
+cleanup failure; reread the project version before retrying.
+
+## Creator-controlled stage progression
+
+The workflow is 2D Concept (`sketch`) → creator approval → 3D Prototype
+(`study`) → creator approval → Developed Model (`model`). Each asset progresses
+independently. In the studio, **Accept this revision** is the creator's explicit
+approval of that exact revision for its stage. Approval is a design decision,
+never a production-readiness claim. Technical validation and publication do not
+approve anything.
+
+No schema migration is required: `accepted` remains the most recently accepted
+revision per asset, and `acceptance` retains explicit owner actions. To determine
+approval for a stage, use that asset's current accepted pointer if it belongs to
+the stage; otherwise use its latest acceptance event for that stage. A new
+approval in the same stage supersedes the previous one. Approval in another
+stage does not erase it. Legacy accepted pointers without history remain valid. After a pointer moves, a saved previousRevisionId also preserves the prior stage approval when that stage has no explicit acceptance event; it never overrides a newer explicit same-stage approval.
+
+New root publications start at `sketch`. Every new 3D publication needs `parentId`.
+A same-stage parent permits improvement without approval. A cross-stage parent
+must be the exact currently approved revision of the immediately preceding stage,
+on the same asset. Stage skipping and unlinked 3D publications are rejected by
+the service. Existing projects, backups and portable imports retain their stored
+stages and revisions; existing 3D-only work can be refined by linking to its
+existing same-stage source.
+
+**Copy revision prompt** stays available for every selected revision. Approved
+concepts expose **Copy 3D prototype prompt**; approved prototypes expose **Copy
+developed model prompt**. Unapproved revisions show the exact revision that
+needs approval. These actions only write text to the clipboard: they never start
+generation, approve a revision or send a chat message.
+
+A compatible agent harness must read current state, decisions and feedback before
+work, verify approval of the pinned source again before publication, and publish
+a new revision with a new ID, the source `parentId`, a fresh request ID and the
+current expectedVersion. Download the exact file manifest from the local
+service's `/api/projects/PROJECT/revisions/REVISION/files/FILE` route, verifying
+hashes. Concepts supply reference images; prototype development must refine its
+editable Blender geometry/source rather than reconstruct screenshots. Preserve
+the approved design, explain changes, and ask about consequential unresolved
+details. Establish asset-specific production requirements before claiming
+readiness; rigging and animation are conditional on intended use.
+
+Scene Loom's separate storyboard asset-list confirmation and concept-only batch
+workflow is outside these buttons. Subsequent stages happen individually here;
+Mesh Foundry does not initiate that Scene Loom workflow.
+
+## Incoming Scene Loom storyboard handoff
+
+The service uses the same operator-configured `SCENE_LOOM_CLI_DIR` and
+`SCENE_LOOM_DATA_DIR` as reference transfers. Run the following read-only command
+with the stable owning project ID and exact storyboard target ID from Scene Loom.
+For Baseline, supply the project ID twice.
+
+```sh
+npm --silent run cli -- scene-loom SOURCE_PROJECT_ID STORYBOARD_ID
+```
+
+The command reads the exact target through Scene Loom's existing
+`project read STORYBOARD_ID` CLI. It checks the returned target ID and owning
+project (`storyboard.projectId` for named storyboards, otherwise `id`).
+Only an explicit `meshFoundryEnabled: true` enables the handoff. Missing
+settings, unreadable targets and unavailable connections fail closed. The
+response contains `contentRevision`, `sceneIds`, `libraryId` and `library`.
+A null library means no linked library exists yet. Existing libraries expose
+their assets, exact revisions, and `sceneLoomPins` through this command and
+ordinary `read`. Legacy projects retain their original storage and identity.
+
+After creator approval, use ordinary `create` if needed. Supply the returned
+`libraryId` as `id`, the stable owning project ID as `sceneLoomProjectId`,
+and a display `name` of up to 160 characters. The service derives and validates
+the library ID from the owning project ID, so all its storyboard targets use
+one library. If another run creates it first, reread it before applying.
+An occupied or unreadable destination requires operator attention.
+
+Use ordinary `apply LIBRARY_ID INPUT.json` with the current library
+`expectedVersion`. The following batch pins an existing revision. To publish a
+new 2D concept, include the usual `revision.publish` operation with
+`stage: "sketch"` and matching asset and revision IDs in the same batch. Include
+category and asset creation as needed. The concept and pin become visible
+together. Creator acceptance remains a separate studio action.
+
+```json
+{
+  "requestId": "pin-shared-prop-1",
+  "expectedVersion": 4,
+  "sceneLoom": {
+    "projectId": "source-project",
+    "storyboardId": "alternate-storyboard",
+    "sceneId": "scene-a",
+    "contentRevision": 12
+  },
+  "operations": [
+    {
+      "type": "scene-loom.pin",
+      "suggestionId": "shared-prop",
+      "sceneIds": ["scene-a", "scene-b"],
+      "assetId": "prop",
+      "revisionId": "prop-concept-1"
+    }
+  ]
+}
+```
+
+The service rechecks the toggle, exact target, reviewed content revision and
+existence of all linked scenes before saving. The live check and local commit
+are separate service operations. A successful receipt replay performs no new
+publication. Pins are keyed by storyboard ID and suggestion ID, carry the
+selected scene and source content revision, and leave other storyboard pins
+intact. On a repeated run, match the existing pin by those IDs and report the
+pinned revision without republishing unless the creator approves a change.
+Multiple scenes can find the same pin via its `sceneIds`.
+
+### Scene Loom follow-up contract
+
+The existing Scene Loom CLI already supplies the live toggle and target
+identity. Scene Loom needs to update both copied prompts and expose persistent
+storyboard-local suggestions and their results through its agent interface.
+A compatible contract is as follows.
+
+- Both prompts carry `projectId` and `storyboardId`; generation also carries
+  `sceneId`. At execution start, run `project read STORYBOARD_ID`, verify
+  identity and require the live toggle to be true. An older copied prompt must
+  be refreshed to use the scoped publication batch described above.
+- Suggestion reads the written Project Vision and full target storyboard.
+  Inspect the approved visualization through that storyboard's asset manifest
+  when its vision references one. Proceed with written context when it is
+  absent. Use Foundry's read-only lookup for reusable assets. Save drafts in
+  Scene Loom against the reviewed `contentRevision`, with stable suggestion
+  IDs, descriptions, explanations and one or more existing `sceneIds`.
+  Expose the saved records on `project read STORYBOARD_ID`. A shared suggestion
+  is a single record with multiple scene IDs.
+- Generation reads the selected scene and only suggestions whose `sceneIds`
+  include it. Show the creator the exact library, suggestions and proposed
+  reuse revision IDs or new concepts before writing. After approval, reread
+  Scene Loom, verify the toggle again and require renewed approval for
+  material source changes. Use the scoped batch for the final Foundry write.
+  Mesh Foundry currently verifies scene membership in the storyboard. The
+  receiving agent must take the suggestion ID and full link list from Scene
+  Loom's current suggestion record.
+- Provide a version-checked Scene Loom mutation to set a result on that
+  exact storyboard and suggestion ID with `libraryId`, `assetId` and
+  `revisionId`. It should require the live toggle, verify the suggestion still
+  exists and treat the same tuple as a repeat. After a successful Foundry
+  write, use the stored pin to reconcile a failed or ambiguous Scene Loom
+  result write without republishing. No Foundry command writes Scene Loom's
+  suggestion records.
+
+The inbound toggle check applies to scoped concept generation and lookup.
+The selected reference-render transfer documented above is a separate workflow.

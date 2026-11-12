@@ -1,3 +1,5 @@
+import { isApproved, nextStage } from "../shared/progression";
+import { revisionAction, workPrompt } from "./prompts";
 import { ReferencePanel } from "./References";
 import { StudioSelect } from "./Select";
 import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
@@ -8,6 +10,13 @@ import type { Project } from "../shared/schema";
 import type { CameraState, Pin } from "./Viewer";
 import "./fonts.css";
 import "./style.css";
+const stageName = (stage: string) =>
+  ({
+    all: "All work",
+    sketch: "2D Concepts",
+    study: "3D Prototypes",
+    model: "Developed Models",
+  })[stage] ?? stage;
 const Viewer = lazy(() =>
   import("./Viewer").then((m) => ({ default: m.Viewer })),
 );
@@ -134,7 +143,11 @@ function App() {
   }, [p, assetId]);
   const asset = p?.assets.find((a) => a.id === assetId),
     revisions = p?.revisions.filter((r) => r.assetId === assetId) ?? [],
-    revision = revisions.find((r) => r.id === revisionId) ?? revisions.at(-1),
+    revision =
+      revisions.find((r) => r.id === revisionId) ??
+      (revisionId === "[missing]"
+        ? revisions.filter((r) => stage === "all" || r.stage === stage).at(-1)
+        : revisions.at(-1)),
     other = revisions.find((r) => r.id === compare),
     duration = revision?.clips.find((c) => c.name === clip)?.duration ?? 2;
   useEffect(() => {
@@ -147,7 +160,8 @@ function App() {
     setTimeLabel(0);
   }, [assetId]);
   useEffect(() => {
-    if (revision && !revisionId) setRevisionId(revision.id);
+    if (revision && (!revisionId || revisionId === "[missing]"))
+      setRevisionId(revision.id);
   }, [revision?.id, revisionId]);
   const liveDraft = useRef({ revisionId: revision?.id, note, pendingPin });
   liveDraft.current = { revisionId: revision?.id, note, pendingPin };
@@ -186,7 +200,14 @@ function App() {
     return f ? `/api/projects/${p!.id}/revisions/${r!.id}/files/${f.id}` : "";
   }
   async function copy(action: string) {
-    const prompt = `Work with Mesh Foundry project ${p?.id ?? "[choose project]"}${asset ? `, asset ${asset.id}` : ""}${revision ? `, exact revision ${revision.id}` : ""}.\nRead ${repo}/docs/agent-interface.md first. Run npm --silent run cli -- read ${p?.id ?? "PROJECT_ID"} from ${repo} with MESH_FOUNDRY_DATA_DIR set to ${JSON.stringify(dataRoot.current)}. Discover pinned reference sets with cli renders and durable transfer state with cli handoffs before generating or sending images. Read current decisions, accepted versions, current task and unresolved feedback before editing.\n${action}\nPreserve accepted revisions and owner feedback; publish a new candidate through the CLI. Do not accept work or modify game/Scene Loom projects without explicit instructions.\nMy direction: `;
+    const prompt = workPrompt(
+      repo,
+      dataRoot.current,
+      p,
+      asset?.id,
+      revision,
+      action,
+    );
     try {
       await navigator.clipboard.writeText(prompt);
       setCopied(action);
@@ -325,6 +346,7 @@ function App() {
                       onClick={() => {
                         setAssetId(a.id);
                         setRevisionId("");
+                        setStage("all");
                       }}
                     >
                       <svg
@@ -355,7 +377,7 @@ function App() {
               className="add-asset"
               onClick={() =>
                 copy(
-                  "Develop a new asset; read the project brief and propose the next useful candidate.",
+                  "Create a NEW separate asset; the selected asset/revision is context only. Read the project brief and propose the next useful asset, then publish only 2D Concept candidates (stage sketch). Do not advance it to 3D or modify the selected asset.",
                 )
               }
             >
@@ -380,7 +402,7 @@ function App() {
                 <button
                   onClick={() =>
                     copy(
-                      "Create a project and develop its first asset candidate.",
+                      "Create a project and its first asset with 2D Concept candidates only (stage sketch). Wait for creator approval before advancing to 3D.",
                     )
                   }
                 >
@@ -398,15 +420,36 @@ function App() {
                     <p>{asset.purpose || "Explore, refine, make it yours."}</p>
                   </div>
                   <button
+                    disabled={!revision}
                     onClick={() =>
                       copy(
-                        "Revise this asset using my direction and its open feedback.",
+                        p && revision
+                          ? revisionAction(p, revision)
+                          : "Select a revision to improve.",
                       )
                     }
                   >
-                    Copy edit prompt
+                    Copy revision prompt
                   </button>
                 </motion.div>
+                {p && revision && nextStage(revision.stage) && (
+                  <div className="progression-actions">
+                    <button
+                      disabled={busy || !isApproved(p, revision)}
+                      aria-describedby="progression-help"
+                      onClick={() => copy(revisionAction(p, revision, true))}
+                    >
+                      {revision.stage === "sketch"
+                        ? "Copy 3D prototype prompt"
+                        : "Copy developed model prompt"}
+                    </button>
+                    <p id="progression-help">
+                      {isApproved(p, revision)
+                        ? `Revision ${revision.id} is approved for this stage. Copying only copies instructions; it does not start generation.`
+                        : `Approve exact revision ${revision.id} in Acceptance before advancing. You can revise it first.`}
+                    </p>
+                  </div>
+                )}
                 <AnimatePresence initial={false}>
                   {mode === "animation" && (
                     <motion.section
@@ -481,17 +524,17 @@ function App() {
                           const r = revisions
                             .filter((r) => s === "all" || r.stage === s)
                             .at(-1);
-                          setRevisionId(r?.id ?? "missing");
+                          setRevisionId(r?.id ?? "[missing]");
                         }}
                       >
                         {stage === s && <Selection id="asset-stage" />}
                         {s === "all"
                           ? "All work"
                           : s === "sketch"
-                            ? "2D sketches"
+                            ? "2D Concepts"
                             : s === "study"
-                              ? "3D studies"
-                              : "Models"}
+                              ? "3D Prototypes"
+                              : "Developed Models"}
                       </button>
                     ))}
                   </div>
@@ -521,6 +564,16 @@ function App() {
                     />
                   </label>
                 </motion.div>
+                <p className="stage-help">
+                  {stage === "sketch"
+                    ? "2D Concepts explore appearance and design."
+                    : stage === "study"
+                      ? "3D Prototypes are real, rotatable meshes used to explore form and proportions."
+                      : stage === "model"
+                        ? "Developed Models are more developed assets; this label alone does not guarantee production readiness."
+                        : "2D Concepts explore appearance and design. 3D Prototypes are real, rotatable meshes for exploring form and proportions. Developed Models are more developed assets; the label alone does not guarantee production readiness."}{" "}
+                  Owner acceptance is separate from development stage.
+                </p>
                 {revision && (stage === "all" || revision.stage === stage) ? (
                   <>
                     <motion.div
@@ -542,10 +595,15 @@ function App() {
                       >
                         <div className="stage-label">
                           <span>
-                            {revision.id} · {revision.stage}
+                            {revision.id} ·{" "}
+                            {revision.stage === "sketch"
+                              ? "2D Concepts"
+                              : revision.stage === "study"
+                                ? "3D Prototypes"
+                                : "Developed Models"}
                           </span>
                           <span>
-                            {p?.accepted[assetId] === revision.id
+                            {p && isApproved(p, revision)
                               ? "Accepted"
                               : "Candidate"}
                             {revision.fixture ? " · Technical fixture" : ""}
@@ -677,14 +735,24 @@ function App() {
                   </>
                 ) : (
                   <div className="stage-empty">
-                    No {stage} candidate yet.{" "}
-                    <button
-                      onClick={() =>
-                        copy(`Develop a ${stage} candidate for this asset.`)
-                      }
-                    >
-                      Copy stage prompt
-                    </button>
+                    No {stageName(stage)} candidate yet.{" "}
+                    {stage === "study" || stage === "model" ? (
+                      <span>
+                        Select and approve an exact{" "}
+                        {stage === "study" ? "2D Concept" : "3D Prototype"}{" "}
+                        revision, then use its advancement prompt.
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          copy(
+                            "Create a new 2D Concept candidate for this asset (stored stage: sketch). Read current decisions and feedback first. Do not advance to 3D.",
+                          )
+                        }
+                      >
+                        Copy concept prompt
+                      </button>
+                    )}
                   </div>
                 )}
                 <div className="asset-footer">
@@ -820,17 +888,17 @@ function App() {
                 </button>
                 <Disclosure className="accept-section" title="Acceptance">
                   <p>
-                    {p?.accepted[assetId] === revision.id
-                      ? "You accepted this revision. New edits create a separate candidate."
-                      : "Technical validation passed. Visual acceptance is your decision."}
+                    {p && isApproved(p, revision)
+                      ? "You approved this exact revision for its stage. New edits create an unapproved candidate. Approval does not guarantee production readiness."
+                      : `Approve exact revision ${revision.id} for its stage when its design is ready to advance. This does not guarantee production readiness.`}
                   </p>
                   <button
-                    disabled={busy || p?.accepted[assetId] === revision.id}
+                    disabled={busy || !!(p && isApproved(p, revision))}
                     onClick={() =>
                       review({ type: "accept", revisionId: revision.id })
                     }
                   >
-                    {p?.accepted[assetId] === revision.id
+                    {p && isApproved(p, revision)
                       ? "Accepted"
                       : "Accept this revision"}
                   </button>
@@ -878,7 +946,7 @@ function App() {
               exit={{ opacity: 0, y: 8, filter: "blur(3px)" }}
               transition={{ duration: 0.22 }}
             >
-              Prompt copied. Add your direction in Codex.
+              Prompt copied. Paste into your agent and add direction.
             </motion.div>
           )}
         </AnimatePresence>

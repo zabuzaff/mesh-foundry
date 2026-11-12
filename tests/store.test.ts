@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { legacyFixture } from "../scripts/legacy-fixture.js";
 import { Store } from "../server/store.js";
 import { makeApp } from "../server/app.js";
 const fixture = resolve("artifacts/authoring-proof");
@@ -17,26 +18,28 @@ async function setup() {
   const root = await mkdtemp(join(tmpdir(), "mesh-foundry-test-"));
   const store = new Store(root);
   await store.init();
-  await store.create({ id: "game", name: "Game" });
+  await store.importBundle(
+    await legacyFixture("game", "Game", "people", "human", [
+      {
+        id: "legacy-r0",
+        stage: "model",
+        files: [
+          { kind: "model", path: join(fixture, "human.glb") },
+          { kind: "blend", path: join(fixture, "human.blend") },
+        ],
+      },
+    ]),
+  );
   return { root, store };
 }
 const initial = {
   requestId: "initial",
   expectedVersion: 0,
   operations: [
-    { type: "category.create", id: "people", name: "People" },
-    {
-      type: "asset.create",
-      asset: {
-        id: "human",
-        categoryId: "people",
-        name: "Human",
-        purpose: "Fixture",
-      },
-    },
     {
       type: "revision.publish",
       id: "r1",
+      parentId: "legacy-r0",
       assetId: "human",
       stage: "model",
       summary: "Proof",
@@ -205,10 +208,10 @@ test("invalid GLB batch does not publish metadata or partial revision", async ()
     const bad = join(root, "invalid.glb");
     await writeFile(bad, "not a GLB");
     const input = structuredClone(initial);
-    (input.operations[2] as any).files[0].path = bad;
+    (input.operations[0] as any).files[0].path = bad;
     await assert.rejects(store.apply("game", input));
     assert.equal((await store.read("game")).version, 0);
-    assert.equal((await store.read("game")).assets.length, 0);
+    assert.equal((await store.read("game")).assets.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -292,7 +295,7 @@ test("missing-primary recovery and failed bundle retry remain usable", async () 
     const backups = await store.backups("game");
     await unlink(join(root, "projects/game/project.json"));
     await store.restore("game", { backupId: backups[0], recoverCorrupt: true });
-    assert.equal((await store.read("game")).assets.length, 0);
+    assert.equal((await store.read("game")).assets.length, 1);
     const bundle = await store.bundle("game");
     const restored = new Store(other);
     await restored.init();
@@ -404,7 +407,7 @@ test("original GLB material and texture references must validate before publicat
     const path = join(root, "broken-material.glb");
     await writeFile(path, invalid);
     const batch = structuredClone(initial);
-    (batch.operations[2] as any).files[0].path = path;
+    (batch.operations[0] as any).files[0].path = path;
     await assert.rejects(store.apply("game", batch), /Invalid GLB/);
     assert.equal((await store.read("game")).version, 0);
     delete json.materials[0].pbrMetallicRoughness.baseColorTexture;
@@ -456,6 +459,144 @@ test("static assets introduced by a rebuild are served without restarting", asyn
     );
   } finally {
     await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("clear assets preserves project configuration and shared backup blobs", async () => {
+  const { root, store } = await setup();
+  try {
+    await store.apply("game", initial);
+    await store.apply("game", {
+      requestId: "decisions",
+      expectedVersion: 1,
+      operations: [
+        { type: "decision.add", id: "global", text: "Project direction" },
+        {
+          type: "decision.add",
+          id: "local",
+          scope: "human",
+          text: "Asset direction",
+        },
+      ],
+    });
+    const before = await store.read("game");
+    const bundle = await store.bundle("game");
+    bundle.project.id = "other";
+    await store.importBundle(bundle);
+    await store.apply("other", {
+      requestId: "backup",
+      expectedVersion: 2,
+      operations: [{ type: "task.set", text: "Other" }],
+    });
+    await assert.rejects(
+      store.clearAssets("game", {
+        expectedVersion: 1,
+        confirmProjectId: "game",
+      }),
+    );
+    await assert.rejects(
+      store.clearAssets("game", {
+        expectedVersion: 2,
+        confirmProjectId: "other",
+      }),
+    );
+    await store.withReferenceJob("game", async () => {
+      await assert.rejects(
+        store.clearAssets("game", {
+          expectedVersion: 2,
+          confirmProjectId: "game",
+        }),
+      );
+    });
+    const other = await store.read("other");
+    await store.clearAssets("game", {
+      expectedVersion: 2,
+      confirmProjectId: "game",
+    });
+    const after = await store.read("game");
+    assert.equal(after.name, before.name);
+    assert.deepEqual(after.categories, before.categories);
+    assert.equal(after.brief, before.brief);
+    assert.equal(after.currentTask, before.currentTask);
+    for (const key of [
+      "assets",
+      "revisions",
+      "feedback",
+      "acceptance",
+      "renderSets",
+      "handoffs",
+    ] as const)
+      assert.deepEqual(after[key], []);
+    assert.deepEqual(after.accepted, {});
+    assert.deepEqual(
+      after.decisions.map((d) => d.id),
+      ["global"],
+    );
+    assert.deepEqual(await store.backups("game"), []);
+    assert.deepEqual(await store.read("other"), other);
+    for (const f of store.files(other))
+      assert.ok(await readFile(join(root, "blobs", f.hash)));
+    await store.clearAssets("other", {
+      expectedVersion: other.version,
+      confirmProjectId: "other",
+    });
+    for (const f of store.files(other))
+      await assert.rejects(readFile(join(root, "blobs", f.hash)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("clearing removes only project-owned interrupted work and reports unknown legacy directories", async () => {
+  const { root, store } = await setup();
+  try {
+    await store.create({ id: "other", name: "Other" });
+    const render = await store.jobDirectory("game", "render");
+    const handoff = await store.jobDirectory("game", "handoff");
+    const other = await store.jobDirectory("other", "render");
+    const model = await readFile(join(fixture, "human.glb"));
+    for (const dir of [render, handoff, other])
+      await writeFile(join(dir, "source.glb"), model);
+    const legacy = join(root, "jobs", "render-legacy");
+    const unknown = join(root, "jobs", "handoff-unknown");
+    await mkdir(legacy);
+    await mkdir(unknown);
+    await writeFile(join(legacy, "source.glb"), model);
+    await writeFile(join(legacy, "front.png"), "partial output");
+    await writeFile(join(unknown, "front.png"), "unattributed output");
+    await store.withReferenceJob("other", async () => {
+      await assert.rejects(
+        store.clearAssets("game", {
+          expectedVersion: 0,
+          confirmProjectId: "game",
+        }),
+      );
+    });
+    const result = await store.clearAssets("game", {
+      expectedVersion: 0,
+      confirmProjectId: "game",
+    });
+    assert.deepEqual(result.unattributedJobDirectories, [
+      "handoff-unknown",
+      "render-legacy",
+    ]);
+    for (const dir of [render, handoff])
+      await assert.rejects(readFile(join(dir, "source.glb")));
+    assert.deepEqual(await readFile(join(other, "source.glb")), model);
+    // Identical source bytes cannot prove which project owned an old job.
+    assert.deepEqual(await readFile(join(legacy, "source.glb")), model);
+    assert.equal(
+      await readFile(join(legacy, "front.png"), "utf8"),
+      "partial output",
+    );
+    assert.equal(
+      await readFile(join(unknown, "front.png"), "utf8"),
+      "unattributed output",
+    );
+    assert.equal((await store.read("game")).assets.length, 0);
+    assert.equal((await store.read("other")).name, "Other");
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

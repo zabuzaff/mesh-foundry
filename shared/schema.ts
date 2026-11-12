@@ -73,6 +73,23 @@ export const feedback = z
     createdAt: z.string(),
   })
   .strict();
+export const sceneLoomTarget = z.strictObject({
+  projectId: id,
+  storyboardId: id,
+});
+export const sceneLoomGeneration = sceneLoomTarget.extend({
+  sceneId: id,
+  contentRevision: z.number().int().nonnegative(),
+});
+const sceneLoomPin = z.strictObject({
+  storyboardId: id,
+  suggestionId: id,
+  sceneIds: z.array(id).min(1),
+  generatedFromSceneId: id,
+  contentRevision: z.number().int().nonnegative(),
+  assetId: id,
+  revisionId: id,
+});
 export const project = z
   .object({
     schemaVersion: z.literal(1),
@@ -80,6 +97,8 @@ export const project = z
     name: z.string().min(1).max(160),
     brief: text,
     currentTask: text,
+    sceneLoomProjectId: id.optional(),
+    sceneLoomPins: z.array(sceneLoomPin).optional(),
     version: z.number().int().nonnegative(),
     updatedAt: z.string(),
     categories: z.array(
@@ -152,6 +171,13 @@ export const operation = z.discriminatedUnion("type", [
       supersedes: id.optional(),
     })
     .strict(),
+  sceneLoomPin
+    .omit({
+      storyboardId: true,
+      generatedFromSceneId: true,
+      contentRevision: true,
+    })
+    .extend({ type: z.literal("scene-loom.pin") }),
   z.object({ type: z.literal("task.set"), text }).strict(),
   z.object({ type: z.literal("feedback.resolve"), id }).strict(),
 ]);
@@ -159,6 +185,7 @@ export const batch = z
   .object({
     requestId: id,
     expectedVersion: z.number().int().nonnegative(),
+    sceneLoom: sceneLoomGeneration.optional(),
     operations: z.array(operation).min(1).max(100),
   })
   .strict();
@@ -180,5 +207,10 @@ export const review = z
   })
   .strict();
 export const createProject = z
-  .object({ id, name: z.string().min(1).max(160), brief: text.default("") })
+  .object({
+    id,
+    name: z.string().min(1).max(160),
+    brief: text.default(""),
+    sceneLoomProjectId: id.optional(),
+  })
   .strict();

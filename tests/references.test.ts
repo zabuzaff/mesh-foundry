@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { legacyFixture } from "../scripts/legacy-fixture.js";
 import { Store } from "../server/store.js";
 import sharp from "sharp";
 import { hash } from "../server/files.js";
@@ -11,42 +12,32 @@ async function setup() {
   const root = await mkdtemp(join(tmpdir(), "foundry-reference-unit-")),
     store = new Store(root);
   await store.init();
-  await store.create({ id: "test", name: "Test" });
-  await store.apply("test", {
-    requestId: "seed",
-    expectedVersion: 0,
-    operations: [
-      { type: "category.create", id: "people", name: "People" },
-      {
-        type: "asset.create",
-        asset: {
-          id: "human",
-          name: "Human",
-          categoryId: "people",
-          purpose: "test",
+  await store.importBundle(
+    await legacyFixture(
+      "test",
+      "Test",
+      "people",
+      "human",
+      [
+        {
+          id: "r1",
+          stage: "study",
+          summary: "test",
+          files: [
+            {
+              kind: "model",
+              path: resolve("artifacts/authoring-proof/human.glb"),
+            },
+            {
+              kind: "blend",
+              path: resolve("artifacts/authoring-proof/human.blend"),
+            },
+          ],
         },
-      },
-      {
-        type: "revision.publish",
-        id: "r1",
-        assetId: "human",
-        stage: "study",
-        summary: "test",
-        files: [
-          {
-            kind: "model",
-            path: resolve("artifacts/authoring-proof/human.glb"),
-          },
-          {
-            kind: "blend",
-            path: resolve("artifacts/authoring-proof/human.blend"),
-          },
-        ],
-        toolVersions: {},
-        fixture: true,
-      },
-    ],
-  });
+      ],
+      1,
+    ),
+  );
   return { root, store };
 }
 test("legacy metadata defaults reference collections; failures are durable/replayed and source hashes checked", async () => {

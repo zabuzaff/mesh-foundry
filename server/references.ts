@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, rm, mkdtemp } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join, isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -12,7 +12,9 @@ import {
   type RenderSet,
   type Handoff,
 } from "../shared/references.js";
-import { id } from "../shared/schema.js";
+import { z } from "zod";
+import { id, sceneLoomTarget } from "../shared/schema.js";
+import { isApproved } from "../shared/progression.js";
 
 // Fixed executables are configured by the local service operator, never by browser input.
 export type ReferenceConfig = {
@@ -140,9 +142,7 @@ export class References {
           ]),
         );
       const accepted =
-        rev.stage === "model" &&
-        !rev.fixture &&
-        p.accepted[rev.assetId] === rev.id;
+        rev.stage === "model" && !rev.fixture && isApproved(p, rev);
       const record: RenderSet = {
         id: d.requestId,
         requestDigest: digest,
@@ -166,11 +166,7 @@ export class References {
       let dir: string | undefined;
       try {
         for (const f of rev.files) await this.bytes(f.hash);
-        await mkdir(join(this.store.root, "jobs"), {
-          recursive: true,
-          mode: 0o700,
-        });
-        dir = await mkdtemp(join(this.store.root, "jobs", "render-"));
+        dir = await this.store.jobDirectory(pid, "render");
         const source = join(dir, "source.glb");
         await writeFile(source, await this.bytes(model.hash), { mode: 0o600 });
         await run(
@@ -330,6 +326,38 @@ export class References {
     if (!result.success) throw Error(JSON.stringify(result.error));
     return result.data;
   }
+  async generationSource(target: z.infer<typeof sceneLoomTarget>) {
+    const source = z
+      .object({
+        id,
+        storyboard: z.object({ projectId: id }).optional(),
+        meshFoundryEnabled: z.boolean().optional(),
+        contentRevision: z.number().int().nonnegative(),
+        scenes: z.array(z.object({ id })),
+      })
+      .parse(
+        await this.cli(this.connection(), [
+          "project",
+          "read",
+          target.storyboardId,
+        ]),
+      );
+    if (
+      source.id !== target.storyboardId ||
+      (source.storyboard?.projectId ?? source.id) !== target.projectId
+    )
+      throw Error(
+        "Scene Loom storyboard does not belong to the requested project",
+      );
+    if (source.meshFoundryEnabled !== true)
+      throw Error(
+        "Mesh Foundry handoff is disabled on this Scene Loom storyboard",
+      );
+    return {
+      contentRevision: source.contentRevision,
+      sceneIds: source.scenes.map((scene) => scene.id),
+    };
+  }
   async destination(target: Handoff["target"]) {
     const p = await this.cli(target, ["project", "read", target.projectId]);
     const scene = p.scenes.find((s: { id: string }) => s.id === target.sceneId);
@@ -425,11 +453,7 @@ export class References {
       try {
         delete h.error;
         await this.destination(h.target);
-        await mkdir(join(this.store.root, "jobs"), {
-          recursive: true,
-          mode: 0o700,
-        });
-        dir = await mkdtemp(join(this.store.root, "jobs", "handoff-"));
+        dir = await this.store.jobDirectory(pid, "handoff");
         h.status = "importing";
         await save();
         for (const v of h.views) {

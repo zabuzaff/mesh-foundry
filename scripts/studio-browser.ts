@@ -1,3 +1,5 @@
+import sharp from "sharp";
+import { legacyFixture } from "./legacy-fixture.js";
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
@@ -9,47 +11,38 @@ const port = 4324,
   url = `http://127.0.0.1:${port}`;
 let service = await makeApp(root, port);
 const fixture = resolve("artifacts/authoring-proof");
-const files = [
+const files: { kind: "model" | "blend"; path: string }[] = [
   { kind: "model", path: join(fixture, "human.glb") },
   { kind: "blend", path: join(fixture, "human.blend") },
 ];
-await service.store.create({ id: "proof", name: "Authoring proof" });
-await service.store.apply("proof", {
-  requestId: "seed",
-  expectedVersion: 0,
-  operations: [
-    { type: "category.create", id: "characters", name: "Characters" },
+const legacy = await legacyFixture(
+  "proof",
+  "Authoring proof",
+  "characters",
+  "human",
+  [
+    { id: "base", stage: "study", summary: "Original palette", files },
     {
-      type: "asset.create",
-      asset: {
-        id: "human",
-        categoryId: "characters",
-        name: "Human base",
-        purpose: "Editable human and motion study. Technical fixture.",
-      },
-    },
-    ...["base", "material-study"].map((id, index) => ({
-      type: "revision.publish",
-      id,
-      assetId: "human",
+      id: "material-study",
       stage: "study",
-      summary: index ? "Material study" : "Original palette",
-      files: index
-        ? [
-            { kind: "model", path: join(fixture, "human-edited.glb") },
-            { kind: "blend", path: join(fixture, "human-edited.blend") },
-          ]
-        : files,
-      toolVersions: { Blender: "5.2.3" },
-      fixture: true,
-    })),
-    {
-      type: "decision.add",
-      id: "fixture-status",
-      text: "Technical fixtures, not accepted character designs.",
+      summary: "Material study",
+      files: [
+        { kind: "model", path: join(fixture, "human-edited.glb") },
+        { kind: "blend", path: join(fixture, "human-edited.blend") },
+      ],
     },
   ],
+  1,
+);
+legacy.project.assets[0].name = "Human base";
+legacy.project.assets[0].purpose =
+  "Editable human and motion study. Technical fixture.";
+legacy.project.decisions.push({
+  id: "fixture-status",
+  text: "Technical fixtures, not accepted character designs.",
+  createdAt: new Date().toISOString(),
 });
+await service.store.importBundle(legacy);
 await service.app.listen({ host: "127.0.0.1", port });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
@@ -217,6 +210,7 @@ try {
         id: "live-candidate",
         assetId: "human",
         stage: "study",
+        parentId: "base",
         summary: "Live publication",
         files,
         toolVersions: { Blender: "5.2.3" },
@@ -230,7 +224,7 @@ try {
     "material-study",
   );
   await page
-    .getByRole("button", { name: "Copy edit prompt", exact: true })
+    .getByRole("button", { name: "Copy revision prompt", exact: true })
     .click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   assert(prompt.includes(root));
@@ -260,6 +254,7 @@ try {
         id: "newer-candidate",
         assetId: "human",
         stage: "study",
+        parentId: "base",
         summary: "Newer revision",
         files,
         toolVersions: { Blender: "5.2.3" },
@@ -358,6 +353,218 @@ try {
     path: "artifacts/studio-empty-desktop.png",
     fullPage: true,
   });
+  // Full creator progression, exercised only in this temporary library.
+  const imagePath = join(root, "concept.png");
+  await sharp({
+    create: { width: 32, height: 32, channels: 4, background: "#abbcff" },
+  })
+    .png()
+    .toFile(imagePath);
+  await service.store.apply("empty-studio", {
+    requestId: "concept-seed",
+    expectedVersion: 0,
+    operations: [
+      { type: "category.create", id: "props", name: "Props" },
+      {
+        type: "asset.create",
+        asset: {
+          id: "crate",
+          categoryId: "props",
+          name: "Crate",
+          purpose: "Progression fixture",
+        },
+      },
+      {
+        type: "revision.publish",
+        id: "concept-r1",
+        assetId: "crate",
+        stage: "sketch",
+        summary: "Concept fixture",
+        files: [{ kind: "image", path: imagePath }],
+        toolVersions: {},
+        fixture: true,
+      },
+    ],
+  });
+  await page.getByRole("heading", { name: "Crate", exact: true }).waitFor();
+  const prototypeCopy = page.getByRole("button", {
+    name: "Copy 3D prototype prompt",
+    exact: true,
+  });
+  await expect(prototypeCopy).toBeDisabled();
+  await expect(page.locator("#progression-help")).toContainText(
+    "Approve exact revision concept-r1",
+  );
+  let writes = 0;
+  page.on("request", (req) => {
+    if (req.method() !== "GET") writes++;
+  });
+  const checkCopy = async (label: string, expected: string[]) => {
+    const before = await service.store.read("empty-studio"),
+      beforeWrites = writes;
+    await page.getByRole("button", { name: label, exact: true }).click();
+    const text = await page.evaluate(() => navigator.clipboard.readText());
+    for (const value of expected) assert(text.includes(value), value);
+    assert(!text.includes(service.agentToken));
+    assert.equal(writes, beforeWrites);
+    assert.deepEqual(await service.store.read("empty-studio"), before);
+  };
+  await checkCopy("Copy revision prompt", [
+    "concept-r1",
+    "stage sketch",
+    "approval is not required for revision work",
+  ]);
+  await page
+    .getByRole("button", { name: "3D Prototypes", exact: true })
+    .click();
+  await expect(
+    page.getByText(
+      "Select and approve an exact 2D Concept revision, then use its advancement prompt.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Copy stage prompt", exact: true }),
+  ).toHaveCount(0);
+  await expect(prototypeCopy).toHaveCount(0);
+  await page.getByRole("button", { name: "2D Concepts", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Accept this revision", exact: true })
+    .click();
+  await expect(prototypeCopy).toBeEnabled();
+  await checkCopy("Copy 3D prototype prompt", [
+    "empty-studio",
+    "crate",
+    "concept-r1",
+    "concept.png",
+    "real, rotatable 3D geometry",
+    "parentId concept-r1, stage study",
+    root,
+  ]);
+  await page.screenshot({
+    path: "artifacts/studio-concept-progression.png",
+    fullPage: true,
+  });
+  // Wait on the empty destination stage while the agent publishes.
+  await page
+    .getByRole("button", { name: "3D Prototypes", exact: true })
+    .click();
+  await service.store.apply("empty-studio", {
+    requestId: "prototype",
+    expectedVersion: (await service.store.read("empty-studio")).version,
+    operations: [
+      {
+        type: "revision.publish",
+        id: "prototype-r1",
+        parentId: "concept-r1",
+        assetId: "crate",
+        stage: "study",
+        summary: "Prototype fixture",
+        files,
+        toolVersions: {},
+        fixture: true,
+      },
+    ],
+  });
+  await expect(page.locator(".stage-label").first()).toContainText(
+    "prototype-r1",
+  );
+  await expect(page.locator(".stage-empty")).toHaveCount(0);
+  await expect(page.locator("canvas").first()).toBeVisible();
+  // Once the arriving revision is selected, later candidates must not steal it.
+  await service.store.apply("empty-studio", {
+    requestId: "prototype-revision",
+    expectedVersion: (await service.store.read("empty-studio")).version,
+    operations: [
+      {
+        type: "revision.publish",
+        id: "prototype-r2",
+        parentId: "prototype-r1",
+        assetId: "crate",
+        stage: "study",
+        summary: "Alternate prototype",
+        files,
+        toolVersions: {},
+        fixture: true,
+      },
+    ],
+  });
+  await page
+    .locator(".revision-trail button")
+    .filter({ has: page.getByText("prototype-r2", { exact: true }) })
+    .waitFor();
+  await expect(page.locator(".stage-label").first()).toContainText(
+    "prototype-r1",
+  );
+  const developedCopy = page.getByRole("button", {
+    name: "Copy developed model prompt",
+    exact: true,
+  });
+  await expect(developedCopy).toBeDisabled();
+  await expect(page.locator("#progression-help")).toContainText(
+    "Approve exact revision prototype-r1",
+  );
+  assert.equal(
+    (await service.store.read("empty-studio")).accepted.crate,
+    "concept-r1",
+  );
+  await checkCopy("Copy revision prompt", [
+    "parentId prototype-r1, stage study",
+  ]);
+  await page
+    .getByRole("button", { name: "Accept this revision", exact: true })
+    .click();
+  await expect(developedCopy).toBeEnabled();
+  await checkCopy("Copy developed model prompt", [
+    "prototype-r1",
+    "human.blend",
+    "do not recreate it from screenshots",
+    "production requirements",
+    "parentId prototype-r1, stage model",
+  ]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  assert(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await page.screenshot({
+    path: "artifacts/studio-prototype-progression-narrow.png",
+    fullPage: true,
+  });
+  await service.store.apply("empty-studio", {
+    requestId: "developed",
+    expectedVersion: (await service.store.read("empty-studio")).version,
+    operations: [
+      {
+        type: "revision.publish",
+        id: "model-r1",
+        parentId: "prototype-r1",
+        assetId: "crate",
+        stage: "model",
+        summary: "Developed fixture",
+        files,
+        toolVersions: {},
+        fixture: true,
+      },
+    ],
+  });
+  await page
+    .locator(".revision-trail button")
+    .filter({ has: page.getByText("model-r1", { exact: true }) })
+    .click();
+  await expect(developedCopy).toHaveCount(0);
+  await checkCopy("Copy revision prompt", ["parentId model-r1, stage model"]);
+  await expect(
+    page.getByRole("button", { name: "Accept this revision", exact: true }),
+  ).toBeEnabled();
+  await page
+    .locator(".revision-trail button")
+    .filter({ has: page.getByText("concept-r1", { exact: true }) })
+    .click();
+  await expect(prototypeCopy).toBeEnabled();
+  assert.equal((await service.store.read("empty-studio")).revisions.length, 4);
   assert.deepEqual(errors, []);
   assert.deepEqual(failed, []);
   await writeFile(
@@ -373,6 +580,8 @@ try {
         restart: true,
         promptDataRoot: true,
         acceptance: true,
+        creatorProgression: true,
+        clipboardOnly: true,
         narrowOverflow: false,
       },
       null,

@@ -8,7 +8,7 @@ The creative loop is planning → Scene Loom → Mesh Foundry → Scene Loom →
 
 ## Agreed workflow
 
-- Project → asset category → asset. An asset contains 2D candidates, 3D studies, model revisions and design decisions. Stages need not all exist at once.
+- Project → asset category → asset. Each asset progresses independently: 2D Concept → explicit creator approval of that revision → 3D Prototype → explicit creator approval of that revision → Developed Model. Same-stage improvements remain available before approval. New revisions preserve their source link and never approve themselves. Stage approval does not guarantee production readiness.
 - Project → animation workspace. Review reusable clips and simple compositions using referenced asset revisions.
 - Prompt in Codex → agent produces a revision → studio updates → inspect and annotate → agent revises → owner accepts explicitly.
 - First feedback tools: side-by-side comparison and clicking a model location to attach feedback. General text feedback remains available. Sliders are deferred until a concrete need justifies them.

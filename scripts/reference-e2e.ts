@@ -1,4 +1,5 @@
 // Opt-in real Blender + unchanged Scene Loom CLI integration. Never uses personal defaults.
+import { legacyFixture } from "./legacy-fixture.js";
 import assert from "node:assert/strict";
 import {
   mkdtemp,
@@ -104,7 +105,7 @@ async function sceneBatch(ops: unknown[]) {
     }),
   );
 }
-try {
+integration: try {
   for (let n = 0; n < 100; n++) {
     try {
       await readFile(join(sceneRoot, "runtime.json"));
@@ -128,7 +129,14 @@ try {
       .png()
       .toFile(path);
     imports.push(
-      (await scene("asset", "import", pid, await input({ path }))).id,
+      (
+        await scene(
+          "asset",
+          "import",
+          pid,
+          await input({ path, kind: "project-image" }),
+        )
+      ).id,
     );
   }
   await sceneBatch([
@@ -173,44 +181,202 @@ try {
       positions: { [sid]: { x: 150, y: -70 } },
     }),
   );
-  const before = await scene("project", "read", pid);
+  const variant = await scene(
+    "storyboard",
+    "create",
+    pid,
+    await input({ name: "Alternate" }),
+  );
+  const sceneRuntime = JSON.parse(
+    await readFile(join(sceneRoot, "runtime.json"), "utf8"),
+  );
+  async function toggle(targetId: string, enabled: boolean) {
+    const response = await fetch(
+      `http://127.0.0.1:${scenePort}/api/projects/${targetId}/settings`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${sceneRuntime.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ meshFoundryEnabled: enabled }),
+      },
+    );
+    assert.ok(response.ok, await response.text());
+  }
+  await assert.rejects(foundry("scene-loom", pid, pid), /handoff is disabled/);
+  await toggle(pid, true);
+  const baseline = await foundry("scene-loom", pid, pid);
+  assert.equal(baseline.library, null);
+  const libraryId = baseline.libraryId;
   await foundry(
     "create",
-    await input({ id: "proof", name: "Reference proof" }),
+    await input({
+      id: libraryId,
+      name: "Shared library",
+      sceneLoomProjectId: pid,
+    }),
   );
-  const files = [
+  await assert.rejects(
+    foundry("scene-loom", pid, variant.id),
+    /handoff is disabled/,
+  );
+  await toggle(variant.id, true);
+  const alternate = await foundry("scene-loom", pid, variant.id);
+  assert.equal(alternate.libraryId, libraryId);
+  await assert.rejects(
+    foundry("scene-loom", variant.id, variant.id),
+    /does not belong/,
+  );
+  const pin = {
+    type: "scene-loom.pin",
+    suggestionId: "shared-prop",
+    sceneIds: [sid, "other"],
+    assetId: "prop",
+    revisionId: "concept-1",
+  };
+  const publish = {
+    type: "revision.publish",
+    id: "concept-1",
+    assetId: "prop",
+    stage: "sketch",
+    summary: "Shared prop concept",
+    toolVersions: {},
+    files: [{ kind: "image", path: join(root, "seed-0.png") }],
+  };
+  const baselineBatch = await input({
+    requestId: "baseline-concept",
+    expectedVersion: 0,
+    sceneLoom: {
+      projectId: pid,
+      storyboardId: pid,
+      sceneId: sid,
+      contentRevision: baseline.contentRevision,
+    },
+    operations: [
+      { type: "category.create", id: "props", name: "Props" },
+      {
+        type: "asset.create",
+        asset: {
+          id: "prop",
+          categoryId: "props",
+          name: "Prop",
+          purpose: "Shared prop",
+        },
+      },
+      publish,
+      pin,
+    ],
+  });
+  const blobsBefore = await readdir(join(foundryRoot, "blobs"));
+  await assert.rejects(
+    foundry(
+      "apply",
+      libraryId,
+      await input({
+        ...JSON.parse(await readFile(baselineBatch, "utf8")),
+        operations: [pin, { type: "task.set", text: "Unrelated update" }],
+      }),
+    ),
+    /Operation is not allowed in Scene Loom generation/,
+  );
+  await toggle(pid, false);
+  await assert.rejects(
+    foundry("apply", libraryId, baselineBatch),
+    /handoff is disabled/,
+  );
+  assert.equal((await foundry("read", libraryId)).revisions.length, 0);
+  assert.deepEqual(await readdir(join(foundryRoot, "blobs")), blobsBefore);
+  await toggle(pid, true);
+  await foundry("apply", libraryId, baselineBatch);
+  assert.equal(
+    (await foundry("apply", libraryId, baselineBatch)).replayed,
+    true,
+  );
+  const repeated = await foundry("scene-loom", pid, pid);
+  const fromSecondScene = repeated.library.sceneLoomPins.find(
+    (candidate: typeof pin & { storyboardId: string }) =>
+      candidate.storyboardId === pid &&
+      candidate.sceneIds.includes("other") &&
+      candidate.suggestionId === pin.suggestionId,
+  );
+  assert.equal(fromSecondScene.revisionId, "concept-1");
+  const alternateTarget = {
+    projectId: pid,
+    storyboardId: variant.id,
+    sceneId: "other",
+    contentRevision: alternate.contentRevision,
+  };
+  await foundry(
+    "apply",
+    libraryId,
+    await input({
+      requestId: "alternate-reuse",
+      expectedVersion: 1,
+      sceneLoom: alternateTarget,
+      operations: [pin],
+    }),
+  );
+  assert.equal((await foundry("read", libraryId)).revisions.length, 1);
+  await foundry(
+    "apply",
+    libraryId,
+    await input({
+      requestId: "alternate-concept",
+      expectedVersion: 2,
+      sceneLoom: alternateTarget,
+      operations: [
+        {
+          ...publish,
+          id: "concept-2",
+          parentId: "concept-1",
+          files: [{ kind: "image", path: join(root, "seed-1.png") }],
+        },
+        { ...pin, revisionId: "concept-2" },
+      ],
+    }),
+  );
+  const shared = await foundry("read", libraryId);
+  assert.equal(shared.assets.length, 1);
+  assert.deepEqual(
+    Object.fromEntries(
+      shared.sceneLoomPins.map(
+        (result: { storyboardId: string; revisionId: string }) => [
+          result.storyboardId,
+          result.revisionId,
+        ],
+      ),
+    ),
+    { [pid]: "concept-1", [variant.id]: "concept-2" },
+  );
+  console.log(
+    "Verified shared Scene Loom library, independent pins, repeat reuse and live toggle checks.",
+  );
+  if (process.argv.includes("--incoming-only")) break integration;
+  const before = await scene("project", "read", pid);
+  const files: { kind: "model" | "blend"; path: string }[] = [
     { kind: "model", path: resolve("artifacts/authoring-proof/human.glb") },
     { kind: "blend", path: resolve("artifacts/authoring-proof/human.blend") },
   ];
   await foundry(
-    "apply",
-    "proof",
-    await input({
-      requestId: "seed",
-      expectedVersion: 0,
-      operations: [
-        { type: "category.create", id: "people", name: "People" },
-        {
-          type: "asset.create",
-          asset: {
-            id: "human",
-            categoryId: "people",
-            name: "Human",
-            purpose: "Isolated proof",
+    "import",
+    await input(
+      await legacyFixture(
+        "proof",
+        "Reference proof",
+        "people",
+        "human",
+        [
+          {
+            id: "r1",
+            stage: "study",
+            summary: "Unaccepted geometry fixture",
+            files,
           },
-        },
-        {
-          type: "revision.publish",
-          id: "r1",
-          assetId: "human",
-          stage: "study",
-          summary: "Unaccepted geometry fixture",
-          files,
-          toolVersions: {},
-          fixture: true,
-        },
-      ],
-    }),
+        ],
+        1,
+      ),
+    ),
   );
   console.log("Rendering real pinned GLB via Foundry CLI…");
   const rs = await foundry(
@@ -605,7 +771,7 @@ try {
           id: "r2",
           parentId: "r1",
           assetId: "human",
-          stage: "model",
+          stage: "study",
           summary: "New candidate",
           files,
           toolVersions: {},
