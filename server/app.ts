@@ -142,6 +142,26 @@ export async function makeApp(
         .send(result.bytes);
     },
   );
+  app.get(
+    "/api/projects/:id/revisions/:rid/files/:fid/clips",
+    async (req: any) => {
+      const { file, bytes } = await store.blob(
+        req.params.id,
+        req.params.rid,
+        req.params.fid,
+      );
+      if (file.kind !== "model") throw Error("Expected a GLB model");
+      const json = JSON.parse(
+        bytes.toString("utf8", 20, 20 + bytes.readUInt32LE(12)),
+      );
+      return {
+        hash: file.hash,
+        clips: (json.animations ?? []).map(
+          ({ name }: { name?: string }) => name ?? null,
+        ),
+      };
+    },
+  );
   // Resolve build assets per request so a rebuild can introduce new hashed filenames.
   await app.register(statics, { root: staticRoot, wildcard: true });
 

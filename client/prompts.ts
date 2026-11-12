@@ -30,3 +30,28 @@ Use any compatible agent harness with local filesystem and process access. Read 
 ${action}
 Preserve approved revisions and owner feedback; publish new candidates through the CLI. Do not approve work or modify game/Scene Loom projects without explicit instructions.\nMy direction: `;
 }
+
+export function rehearsalPrompt(
+  repo: string,
+  dataRoot: string,
+  p: Project,
+  r: Revision,
+  hash: string,
+  clips: (string | null)[],
+) {
+  const source = {
+    project: p.id,
+    asset: r.assetId,
+    revision: r.id,
+    hash,
+    clips,
+  };
+  return `Prepare a Scene Rehearsal draft for owner review using this exact accepted Mesh Foundry model.
+Source identity (project ID, asset ID, accepted model revision ID, GLB SHA-256, embedded clip names): ${JSON.stringify(source)}
+
+1. In ${repo}, read docs/agent-interface.md and shared/progression.ts. Set MESH_FOUNDRY_DATA_DIR to ${JSON.stringify(dataRoot)} for the Mesh Foundry CLI. Run npm --silent run cli -- read ${p.id}. Verify the project and asset IDs, the exact revision's model stage and GLB hash, and then verify its embedded clip names from the bundle in step 4. Use approvedRevision for the model stage: check the accepted pointer, then the latest matching acceptance event, then the legacy previousRevisionId fallback. Acceptance in another stage can coexist with model approval. Stop if the accepted model revision changed or any source identity differs. Read the asset brief and decisions for intended use.
+2. In /Users/zaffran/vibed/scene-rehearsal, read README.md and inspect the current CLI and import contract. The current import route requires an owner browser session. If a supported agent import workflow is still missing, report the blocker and stop before import or publication. The follow-up is a supported Scene Rehearsal agent import command that validates the accepted bundle and pins its exact source identity while preserving owner-only final approval and export. Do not use owner credentials, direct storage edits, or manual file picking as an agent import workflow.
+3. When supported agent import is available, set SCENE_REHEARSAL_DATA_DIR and SCENE_REHEARSAL_PORT for the owner-intended running library. Run its CLI list and read the target rehearsal head. Identify the intended objects and activity slots from the brief and scene. Ask the owner if the target rehearsal or any slot mapping is unclear before publishing.
+4. From Mesh Foundry, using the same data directory, run npm --silent run cli -- export ${p.id} /absolute/new-bundle.json to a private working location. Verify the bundle's accepted model identity. Hash the decoded GLB bytes and compare the embedded animation names with the exact clip list above. Stop and report any missing, empty, or mismatched embedded names. A null or empty clip name identifies an unnamed animation. Scene Rehearsal requires nonempty embedded names. Immediately before importing, reread the live Mesh Foundry acceptance record and stop if the accepted model revision changed. Import through the supported agent workflow with the expected source identity. Verify the returned identity and clip names, and retain the returned source key.
+5. Use the latest rehearsal scene as the base. Use the scene version's asset schema. Version 1 uses asset.hash and asset.clip and cannot pin a source key. If exact provenance cannot be guaranteed by that binding, stop and ask about moving the rehearsal to version 2. Version 2 uses asset.hash and asset.source (the returned source key). Map activity slots in asset.clips to exact embedded clip names and omit clips for static models. Preserve unrelated objects and scenarios. Publish a child draft with npm run cli -- publish /absolute/path/to/request.json with JSON fields request (unique request ID), parent (current head digest), scene (updated manifest), and links (addressed feedback IDs). If the parent is stale, reread it and reconcile before retrying. Reopen the published draft and report its digest and slot mapping to the owner for review. Final approval and export are owner actions.`;
+}

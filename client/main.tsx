@@ -1,5 +1,5 @@
 import { isApproved, nextStage } from "../shared/progression";
-import { revisionAction, workPrompt } from "./prompts";
+import { rehearsalPrompt, revisionAction, workPrompt } from "./prompts";
 import { ReferencePanel } from "./References";
 import { StudioSelect } from "./Select";
 import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
@@ -53,11 +53,16 @@ function App() {
     [error, setError] = useState(""),
     [connected, setConnected] = useState(true),
     [copied, setCopied] = useState(""),
+    [dataRoot, setDataRoot] = useState<string>(),
+    [clipMetadata, setClipMetadata] = useState<{
+      url: string;
+      hash: string;
+      clips?: (string | null)[];
+    }>(),
     [busy, setBusy] = useState(false);
   const time = useRef(0),
     camera = useRef<CameraState | null>(null),
     token = useRef(""),
-    dataRoot = useRef(""),
     selectedProject = useRef(projectId);
   selectedProject.current = projectId;
   useEffect(() => {
@@ -104,9 +109,9 @@ function App() {
     get("/api/session")
       .then((s) => {
         token.current = s.token;
-        dataRoot.current = s.dataRoot;
+        setDataRoot(s.dataRoot || "");
       })
-      .catch(() => {});
+      .catch(() => setDataRoot(""));
     refresh();
     const interval = setInterval(refresh, 1500);
     return () => {
@@ -148,8 +153,43 @@ function App() {
       (revisionId === "[missing]"
         ? revisions.filter((r) => stage === "all" || r.stage === stage).at(-1)
         : revisions.at(-1)),
+    modelFile = revision?.files.find((f) => f.kind === "model"),
     other = revisions.find((r) => r.id === compare),
     duration = revision?.clips.find((c) => c.name === clip)?.duration ?? 2;
+  const rehearsalUrl =
+    mode === "assets" &&
+    (stage === "all" || stage === "model") &&
+    p &&
+    revision?.stage === "model" &&
+    modelFile &&
+    isApproved(p, revision)
+      ? `/api/projects/${p.id}/revisions/${revision.id}/files/${modelFile.id}/clips`
+      : "";
+  const rehearsalHash = modelFile?.hash;
+  const currentClipMetadata =
+    clipMetadata?.url === rehearsalUrl && clipMetadata.hash === rehearsalHash
+      ? clipMetadata
+      : undefined;
+  const rehearsalClips = currentClipMetadata?.clips;
+  useEffect(() => {
+    if (!rehearsalUrl || !rehearsalHash) return;
+    let active = true;
+    get(rehearsalUrl)
+      .then(({ hash, clips }) => {
+        if (active)
+          setClipMetadata({
+            url: rehearsalUrl,
+            hash: rehearsalHash,
+            clips: hash === rehearsalHash ? clips : undefined,
+          });
+      })
+      .catch(() => {
+        if (active) setClipMetadata({ url: rehearsalUrl, hash: rehearsalHash });
+      });
+    return () => {
+      active = false;
+    };
+  }, [rehearsalUrl, rehearsalHash]);
   useEffect(() => {
     setCompare("");
     setPendingPin(undefined);
@@ -200,17 +240,14 @@ function App() {
     return f ? `/api/projects/${p!.id}/revisions/${r!.id}/files/${f.id}` : "";
   }
   async function copy(action: string) {
-    const prompt = workPrompt(
-      repo,
-      dataRoot.current,
-      p,
-      asset?.id,
-      revision,
-      action,
+    return copyText(
+      workPrompt(repo, dataRoot ?? "", p, asset?.id, revision, action),
     );
+  }
+  async function copyText(prompt: string) {
     try {
       await navigator.clipboard.writeText(prompt);
-      setCopied(action);
+      setCopied(prompt);
       setTimeout(() => setCopied(""), 2000);
     } catch {
       setError("Clipboard unavailable. Allow clipboard access and retry.");
@@ -448,6 +485,39 @@ function App() {
                         ? `Revision ${revision.id} is approved for this stage. Copying only copies instructions; it does not start generation.`
                         : `Approve exact revision ${revision.id} in Acceptance before advancing. You can revise it first.`}
                     </p>
+                  </div>
+                )}
+                {rehearsalUrl && p && revision && modelFile && (
+                  <div className="progression-actions">
+                    <button
+                      disabled={busy || !dataRoot || !rehearsalClips}
+                      onClick={() =>
+                        dataRoot &&
+                        rehearsalClips &&
+                        copyText(
+                          rehearsalPrompt(
+                            repo,
+                            dataRoot,
+                            p,
+                            revision,
+                            modelFile.hash,
+                            rehearsalClips,
+                          ),
+                        )
+                      }
+                    >
+                      Copy Scene Rehearsal prompt
+                    </button>
+                    {dataRoot === "" && (
+                      <p>
+                        Could not locate the source library. Reload to retry.
+                      </p>
+                    )}
+                    {currentClipMetadata && !rehearsalClips && (
+                      <p>
+                        Could not read embedded clip names. Reload to retry.
+                      </p>
+                    )}
                   </div>
                 )}
                 <AnimatePresence initial={false}>

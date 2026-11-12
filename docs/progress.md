@@ -262,3 +262,27 @@ creation, concept publication and suggestion pins. The service checks live
 source eligibility before installing new blobs and again before committing
 metadata. The inbound integration covers rejected unrelated operations and
 verifies that a disabled target leaves the blob directory unchanged.
+
+## Scene Rehearsal prompt — 2026-11-12
+
+The developed model review copies a source-pinned handoff prompt for the
+current model-stage approval, including when another stage holds the asset's
+latest acceptance. The prompt identifies the library and exact GLB, requires
+live acceptance and embedded clip verification, and describes draft publication
+with owner review. The checked Scene Rehearsal CLI can publish drafts, while
+asset import requires an owner session. The prompt stops at that blocker until
+Scene Rehearsal provides an authorized agent import workflow.
+
+The isolated Chrome check exercises the real clipboard with a fictional
+asset before acceptance, after model acceptance, and after a prototype
+acceptance. It verifies the exact payload against the fixture GLB and checks
+that copying leaves project state unchanged and makes no external requests.
+The live Kairo handoff remains pending agent import support.
+
+Review fixes: the copy action waits for the session's source library path and
+reads exact animation names from the hash-verified GLB. Missing names are
+represented as null and flagged as incompatible with Scene Rehearsal import.
+The isolated browser test held the session response and checked the clipboard
+against a modified fixture with both named and unnamed animations. The build,
+all 23 tests, formatting, and browser checks passed. The local Mesh Foundry
+service was restarted and its project metadata matched before and after.

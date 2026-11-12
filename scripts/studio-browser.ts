@@ -2,7 +2,8 @@ import sharp from "sharp";
 import { legacyFixture } from "./legacy-fixture.js";
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makeApp } from "../server/app.js";
@@ -533,6 +534,25 @@ try {
     path: "artifacts/studio-prototype-progression-narrow.png",
     fullPage: true,
   });
+  const originalGlb = await readFile(files[0].path);
+  const originalJsonEnd = 20 + originalGlb.readUInt32LE(12);
+  const embedded = JSON.parse(
+    originalGlb.toString("utf8", 20, originalJsonEnd),
+  );
+  delete embedded.animations[0].name;
+  const json = JSON.stringify(embedded);
+  const jsonBytes = Buffer.from(json);
+  const paddedJson = Buffer.alloc(Math.ceil(jsonBytes.length / 4) * 4, 32);
+  jsonBytes.copy(paddedJson);
+  const glb = Buffer.concat([
+    originalGlb.subarray(0, 20),
+    paddedJson,
+    originalGlb.subarray(originalJsonEnd),
+  ]);
+  glb.writeUInt32LE(glb.length, 8);
+  glb.writeUInt32LE(paddedJson.length, 12);
+  const modelPath = join(root, "unnamed-clip.glb");
+  await writeFile(modelPath, glb);
   await service.store.apply("empty-studio", {
     requestId: "developed",
     expectedVersion: (await service.store.read("empty-studio")).version,
@@ -544,7 +564,7 @@ try {
         assetId: "crate",
         stage: "model",
         summary: "Developed fixture",
-        files,
+        files: [{ kind: "model", path: modelPath }, files[1]],
         toolVersions: {},
         fixture: true,
       },
@@ -564,6 +584,92 @@ try {
     .filter({ has: page.getByText("concept-r1", { exact: true }) })
     .click();
   await expect(prototypeCopy).toBeEnabled();
+  const rehearsalLabel = "Copy Scene Rehearsal prompt";
+  const rehearsalCopy = page.getByRole("button", {
+    name: rehearsalLabel,
+    exact: true,
+  });
+  const selectRevision = (id: string) =>
+    page
+      .locator(".revision-trail button")
+      .filter({ has: page.getByText(id, { exact: true }) })
+      .click();
+  await selectRevision("model-r1");
+  await expect(rehearsalCopy).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Accept this revision", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Developed Models", exact: true })
+    .click();
+  let releaseSession!: () => void;
+  const sessionGate = new Promise<void>((resolve) => {
+    releaseSession = resolve;
+  });
+  await page.route("**/api/session", async (route) => {
+    await sessionGate;
+    await route.continue();
+  });
+  const clipsLoaded = page.waitForResponse(
+    (response) => response.url().endsWith("/clips") && response.ok(),
+  );
+  await page.reload();
+  await clipsLoaded;
+  await expect(rehearsalCopy).toBeDisabled();
+  releaseSession();
+  await expect(rehearsalCopy).toBeEnabled();
+  await page.unroute("**/api/session");
+  await page
+    .getByRole("button", { name: "Developed Models", exact: true })
+    .click();
+  const identity = JSON.stringify({
+    project: "empty-studio",
+    asset: "crate",
+    revision: "model-r1",
+    hash: createHash("sha256").update(glb).digest("hex"),
+    clips: embedded.animations.map(
+      (clip: { name?: string }) => clip.name ?? null,
+    ),
+  });
+  const payload = [
+    identity,
+    "A null or empty clip name identifies an unnamed animation",
+    JSON.stringify(root),
+    "read empty-studio",
+    "export empty-studio",
+    "Immediately before importing, reread the live Mesh Foundry acceptance record",
+    "If a supported agent import workflow is still missing, report the blocker",
+    "Ask the owner if the target rehearsal or any slot mapping is unclear",
+    "Final approval and export are owner actions",
+  ];
+  const externalRequests: string[] = [];
+  page.on("request", (request) => {
+    if (!request.url().startsWith(url + "/"))
+      externalRequests.push(request.url());
+  });
+  await checkCopy(rehearsalLabel, payload);
+  assert.deepEqual(externalRequests, []);
+  await rehearsalCopy.screenshot({
+    path: "artifacts/studio-rehearsal-action.png",
+  });
+  await page.screenshot({
+    path: "artifacts/studio-rehearsal-narrow.png",
+    fullPage: true,
+  });
+
+  await page.getByRole("button", { name: "All work", exact: true }).click();
+  await selectRevision("prototype-r2");
+  await page
+    .getByRole("button", { name: "Accept this revision", exact: true })
+    .click();
+  await expect
+    .poll(async () => (await service.store.read("empty-studio")).accepted.crate)
+    .toBe("prototype-r2");
+  await page
+    .getByRole("button", { name: "Developed Models", exact: true })
+    .click();
+  await selectRevision("model-r1");
+  await checkCopy(rehearsalLabel, payload);
   assert.equal((await service.store.read("empty-studio")).revisions.length, 4);
   assert.deepEqual(errors, []);
   assert.deepEqual(failed, []);
