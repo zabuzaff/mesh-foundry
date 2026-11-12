@@ -11,7 +11,7 @@
     "proof:browser": "node scripts/verify-browser.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "start": "tsx server/main.ts",
+    "start": "tsx --env-file-if-exists=.env.local server/main.ts",
     "cli": "tsx scripts/cli.ts",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "tsx scripts/studio-browser.ts",
