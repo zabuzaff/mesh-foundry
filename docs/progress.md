@@ -286,3 +286,14 @@ The isolated browser test held the session response and checked the clipboard
 against a modified fixture with both named and unnamed animations. The build,
 all 23 tests, formatting, and browser checks passed. The local Mesh Foundry
 service was restarted and its project metadata matched before and after.
+
+## Per-asset turnaround prompt — 2026-11-14
+
+Assets with an approved 2D concept expose Copy turnaround prompt in asset
+review, including while reviewing a 3D revision. The prompt pins the current
+concept-stage approval and requests a linked sketch candidate with aligned
+orthographic front, side and back views. The selected 3D revision supplies
+feedback context. Copying is clipboard-only and approval remains an owner action.
+
+The production build, 23 unit tests, formatting check and isolated Chrome
+assertions passed. Reviewed desktop concept and narrow prototype captures.

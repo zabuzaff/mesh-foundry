@@ -1,9 +1,6 @@
 import type { Project } from "../shared/schema";
 import { isApproved, nextStage, type Revision } from "../shared/progression";
-export function revisionAction(p: Project, r: Revision, advance = false) {
-  const target = advance ? nextStage(r.stage) : r.stage;
-  if (advance && (!target || !isApproved(p, r)))
-    throw Error(`Approve exact revision ${r.id} before advancing`);
+function revisionSource(p: Project, r: Revision) {
   const files = r.files.map((f) => ({
     id: f.id,
     kind: f.kind,
@@ -12,7 +9,24 @@ export function revisionAction(p: Project, r: Revision, advance = false) {
     url: `/api/projects/${p.id}/revisions/${r.id}/files/${f.id}`,
   }));
   return `Selected source: project ${p.id}, asset ${r.assetId}, exact revision ${r.id}, stored stage ${r.stage}.
-Source file manifest (resolve URLs against the running Mesh Foundry service; verify hashes): ${JSON.stringify(files)}
+Source file manifest (resolve URLs against the running Mesh Foundry service; verify hashes): ${JSON.stringify(files)}`;
+}
+export function turnaroundAction(
+  p: Project,
+  concept: Revision,
+  reviewed?: Revision,
+) {
+  return `${revisionSource(p, concept)}
+The exact approved 2D concept above is the design source. ${reviewed && reviewed.stage !== "sketch" ? `The owner was reviewing ${reviewed.id} (stage ${reviewed.stage}). Read feedback on that revision to identify ambiguities the turnaround should clarify. Use the 3D revision as review context only.` : "Read related prototype feedback for ambiguities the turnaround should clarify."}
+Verify before generating and again before publication that the latest owner approval for this asset's sketch stage still names exact revision ${concept.id}. If it changed, stop and ask the creator to copy a fresh turnaround prompt.
+Download and verify the approved concept images. Create a detailed 2D turnaround with labeled orthographic front, side, and back views in the same neutral pose, at the same scale, without perspective. Align the views to a shared baseline and match landmarks across them. For a non-character asset, use the same neutral configuration in each view. Preserve the approved silhouette, proportions, colors, materials and defining details. Ask the creator about consequential hidden details that cannot be inferred.
+Publish a linked NEW revision for asset ${concept.assetId}: revision.publish with a new id, parentId ${concept.id}, stage sketch. Attach one labeled turnaround sheet containing all three views as the first image file so Mesh Foundry displays the complete sheet. Summarize the details clarified and any remaining assumptions. Keep this candidate unapproved for creator review. Do not generate or publish 3D work as part of this request.`;
+}
+export function revisionAction(p: Project, r: Revision, advance = false) {
+  const target = advance ? nextStage(r.stage) : r.stage;
+  if (advance && (!target || !isApproved(p, r)))
+    throw Error(`Approve exact revision ${r.id} before advancing`);
+  return `${revisionSource(p, r)}
 Reread current state before work and again before publication. ${advance ? `Verify the latest explicit owner approval for this asset's ${r.stage} stage still names exact revision ${r.id}; otherwise stop and ask the creator to approve it in Mesh Foundry. Never approve on the creator's behalf.` : "Improve this selected revision using the creator's direction and current feedback; approval is not required for revision work."}
 ${!advance ? "Refine the selected work in its existing stage and preserve its design intent." : r.stage === "sketch" ? "Inspect the exact concept images. Translate the approved design into real, rotatable 3D geometry, preserving approved proportions, silhouette, colors and defining details. Ask the creator about consequential unresolved details instead of silently inventing them." : "Download and refine the exact existing editable Blender source, geometry, recipes and textures listed above; do not recreate it from screenshots. Preserve the approved design and explain changes. Establish relevant production requirements with the creator (intended use, target environment, scale, geometry/material/texture budgets and export needs) before claiming readiness. Rigging and animation are needed only if the asset's intended use requires them."}
 Publish a linked NEW revision for asset ${r.assetId}: revision.publish with a new id, parentId ${r.id}, stage ${target}. Preserve all previous revisions, source files, decisions and feedback. Explain changes and limitations in the summary. New revisions remain unapproved candidates. Stage approval never guarantees production readiness. Work only on this selected asset; do not advance other assets.`;

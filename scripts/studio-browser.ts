@@ -392,6 +392,11 @@ try {
     name: "Copy 3D prototype prompt",
     exact: true,
   });
+  const turnaroundCopy = page.getByRole("button", {
+    name: "Copy turnaround prompt",
+    exact: true,
+  });
+  await expect(turnaroundCopy).toHaveCount(0);
   await expect(prototypeCopy).toBeDisabled();
   await expect(page.locator("#progression-help")).toContainText(
     "Approve exact revision concept-r1",
@@ -433,6 +438,15 @@ try {
     .getByRole("button", { name: "Accept this revision", exact: true })
     .click();
   await expect(prototypeCopy).toBeEnabled();
+  await checkCopy("Copy turnaround prompt", [
+    "exact revision concept-r1",
+    "concept.png",
+    "orthographic front, side, and back views",
+    "same neutral pose, at the same scale, without perspective",
+    "one labeled turnaround sheet containing all three views as the first image file",
+    "parentId concept-r1, stage sketch",
+    root,
+  ]);
   await checkCopy("Copy 3D prototype prompt", [
     "empty-studio",
     "crate",
@@ -516,6 +530,11 @@ try {
     .getByRole("button", { name: "Accept this revision", exact: true })
     .click();
   await expect(developedCopy).toBeEnabled();
+  await checkCopy("Copy turnaround prompt", [
+    "exact revision concept-r1",
+    "reviewing prototype-r1",
+    "parentId concept-r1, stage sketch",
+  ]);
   await checkCopy("Copy developed model prompt", [
     "prototype-r1",
     "human.blend",

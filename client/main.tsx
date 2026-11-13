@@ -1,5 +1,10 @@
-import { isApproved, nextStage } from "../shared/progression";
-import { rehearsalPrompt, revisionAction, workPrompt } from "./prompts";
+import { approvedRevision, isApproved, nextStage } from "../shared/progression";
+import {
+  rehearsalPrompt,
+  revisionAction,
+  turnaroundAction,
+  workPrompt,
+} from "./prompts";
 import { ReferencePanel } from "./References";
 import { StudioSelect } from "./Select";
 import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
@@ -156,6 +161,9 @@ function App() {
     modelFile = revision?.files.find((f) => f.kind === "model"),
     other = revisions.find((r) => r.id === compare),
     duration = revision?.clips.find((c) => c.name === clip)?.duration ?? 2;
+  const conceptId = p && approvedRevision(p, assetId, "sketch");
+  const concept = revisions.find((r) => r.id === conceptId);
+  const canAdvance = revision && nextStage(revision.stage);
   const rehearsalUrl =
     mode === "assets" &&
     (stage === "all" || stage === "model") &&
@@ -469,22 +477,50 @@ function App() {
                     Copy revision prompt
                   </button>
                 </motion.div>
-                {p && revision && nextStage(revision.stage) && (
+                {p && (canAdvance || (mode === "assets" && concept)) && (
                   <div className="progression-actions">
-                    <button
-                      disabled={busy || !isApproved(p, revision)}
-                      aria-describedby="progression-help"
-                      onClick={() => copy(revisionAction(p, revision, true))}
-                    >
-                      {revision.stage === "sketch"
-                        ? "Copy 3D prototype prompt"
-                        : "Copy developed model prompt"}
-                    </button>
-                    <p id="progression-help">
-                      {isApproved(p, revision)
-                        ? `Revision ${revision.id} is approved for this stage. Copying only copies instructions; it does not start generation.`
-                        : `Approve exact revision ${revision.id} in Acceptance before advancing. You can revise it first.`}
-                    </p>
+                    <div className="progression-buttons">
+                      {revision && canAdvance && (
+                        <button
+                          disabled={busy || !isApproved(p, revision)}
+                          aria-describedby="progression-help"
+                          onClick={() =>
+                            copy(revisionAction(p, revision, true))
+                          }
+                        >
+                          {revision.stage === "sketch"
+                            ? "Copy 3D prototype prompt"
+                            : "Copy developed model prompt"}
+                        </button>
+                      )}
+                      {mode === "assets" && concept && (
+                        <button
+                          disabled={busy || !dataRoot}
+                          onClick={() =>
+                            dataRoot &&
+                            copyText(
+                              workPrompt(
+                                repo,
+                                dataRoot,
+                                p,
+                                asset.id,
+                                concept,
+                                turnaroundAction(p, concept, revision),
+                              ),
+                            )
+                          }
+                        >
+                          Copy turnaround prompt
+                        </button>
+                      )}
+                    </div>
+                    {revision && canAdvance && (
+                      <p id="progression-help">
+                        {isApproved(p, revision)
+                          ? `Revision ${revision.id} is approved for this stage. Copying only copies instructions; it does not start generation.`
+                          : `Approve exact revision ${revision.id} in Acceptance before advancing. You can revise it first.`}
+                      </p>
+                    )}
                   </div>
                 )}
                 {rehearsalUrl && p && revision && modelFile && (
