@@ -1,3 +1,4 @@
+import { checkLinkedRehearsal } from "./rehearsal-browser-fixture.js";
 import type { Project } from "../shared/schema.js";
 import sharp from "sharp";
 import { legacyFixture } from "./legacy-fixture.js";
@@ -226,6 +227,10 @@ try {
     "material-study",
   );
   await page
+    .getByRole("button", { name: "3D Prototypes", exact: true })
+    .click();
+  await page.locator(".revision-action-controls summary").click();
+  await page
     .getByRole("button", { name: "Copy revision prompt", exact: true })
     .click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
@@ -398,10 +403,11 @@ try {
     exact: true,
   });
   await expect(turnaroundCopy).toHaveCount(0);
-  await expect(prototypeCopy).toBeDisabled();
-  await expect(page.locator("#progression-help")).toContainText(
-    "Approve exact revision concept-r1",
-  );
+  await expect(prototypeCopy).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Open in 2D Concepts", exact: true })
+    .click();
+  await expect(page.locator(".revision-actions")).toContainText("concept-r1");
   let writes = 0;
   page.on("request", (req) => {
     if (req.method() !== "GET") writes++;
@@ -409,14 +415,32 @@ try {
   const checkCopy = async (label: string, expected: string[]) => {
     const before = await service.store.read("empty-studio"),
       beforeWrites = writes;
-    await page.getByRole("button", { name: label, exact: true }).click();
+    const button = page.getByRole("button", { name: label, exact: true });
+    if (!(await button.isVisible())) {
+      await page.locator(".revision-action-controls summary").click();
+    }
+    await button.click();
     const text = await page.evaluate(() => navigator.clipboard.readText());
     for (const value of expected) assert(text.includes(value), value);
     assert(!text.includes(service.agentToken));
     assert.equal(writes, beforeWrites);
     assert.deepEqual(await service.store.read("empty-studio"), before);
   };
-  await checkCopy("Copy revision prompt", [
+  await page.locator(".project-actions summary").click();
+  await checkCopy("Copy new concept prompt", [
+    "project empty-studio",
+    "Create a separate asset",
+  ]);
+  assert(
+    !(await page.evaluate(() => navigator.clipboard.readText())).includes(
+      "exact revision concept-r1",
+    ),
+  );
+  await page.locator(".project-actions summary").click();
+  await expect(
+    page.getByRole("heading", { name: "Next on the worktable" }),
+  ).toHaveCount(0);
+  await checkCopy("Copy concept revision prompt", [
     "concept-r1",
     "stage sketch",
     "approval is not required for revision work",
@@ -518,14 +542,17 @@ try {
   await expect(page.locator(".stage-label").first()).toContainText(
     "prototype-r1",
   );
+  await page.getByRole("button", { name: "All work", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Open in 3D Prototypes", exact: true })
+    .click();
+  await page.locator(".asset-item.selected").click();
+  await expect(page.locator(".revision-actions")).toContainText("prototype-r1");
   const developedCopy = page.getByRole("button", {
     name: "Copy developed model prompt",
     exact: true,
   });
-  await expect(developedCopy).toBeDisabled();
-  await expect(page.locator("#progression-help")).toContainText(
-    "Approve exact revision prototype-r1",
-  );
+  await expect(developedCopy).toHaveCount(0);
   assert.equal(
     (await service.store.read("empty-studio")).accepted.crate,
     "concept-r1",
@@ -536,23 +563,49 @@ try {
     "capture the exact exported GLB",
     "Number the images SS1, SS2",
     "clickable local file link using the absolute path",
-    "Put the absolute path of each annotated PNG next to its SS number",
-    "paste-ready prompt",
-    "This review is read-only",
+    "finding.add",
+    "Set revisionId to prototype-r1",
+    "Optional direction",
     root,
   ]);
   await checkCopy("Copy revision prompt", [
     "parentId prototype-r1, stage study",
   ]);
+  await service.store.apply("empty-studio", {
+    requestId: "review-fixture",
+    expectedVersion: (await service.store.read("empty-studio")).version,
+    operations: [
+      {
+        type: "finding.add",
+        id: "prototype-fit",
+        revisionId: "prototype-r1",
+        text: "SS1: Round the left join. Verify in profile.",
+      },
+      {
+        type: "finding.add",
+        id: "other-fit",
+        revisionId: "prototype-r2",
+        text: "Different candidate only.",
+      },
+    ],
+  });
+  await page
+    .getByText("SS1: Round the left join. Verify in profile.", { exact: true })
+    .waitFor();
+  await checkCopy("Copy 3D prototype correction prompt", [
+    "parentId prototype-r1, stage study",
+    "SS1: Round the left join.",
+    "Optional direction",
+  ]);
+  assert(
+    !(await page.evaluate(() => navigator.clipboard.readText())).includes(
+      "Different candidate only.",
+    ),
+  );
   await page
     .getByRole("button", { name: "Accept this revision", exact: true })
     .click();
   await expect(developedCopy).toBeEnabled();
-  await checkCopy("Copy detailed 2D concept prompt", [
-    "exact revision concept-r1",
-    "reviewing prototype-r1",
-    "parentId concept-r1, stage sketch",
-  ]);
   await checkCopy("Copy developed model prompt", [
     "prototype-r1",
     "human.blend",
@@ -612,7 +665,31 @@ try {
     .filter({ has: page.getByText("model-r1", { exact: true }) })
     .click();
   await expect(developedCopy).toHaveCount(0);
-  await checkCopy("Copy revision prompt", ["parentId model-r1, stage model"]);
+  await checkCopy("Copy developed model review prompt", [
+    "exact revision model-r1",
+    "finding.add",
+  ]);
+  await service.store.apply("empty-studio", {
+    requestId: "model-review-fixture",
+    expectedVersion: (await service.store.read("empty-studio")).version,
+    operations: [
+      {
+        type: "finding.add",
+        id: "model-fit",
+        revisionId: "model-r1",
+        text: "SS1: Remove the visible seam. Verify in three-quarter view.",
+      },
+    ],
+  });
+  await page
+    .getByText("SS1: Remove the visible seam. Verify in three-quarter view.", {
+      exact: true,
+    })
+    .waitFor();
+  await checkCopy("Copy developed model correction prompt", [
+    "parentId model-r1, stage model",
+    "SS1: Remove the visible seam.",
+  ]);
   await expect(
     page.getByRole("button", { name: "Accept this revision", exact: true }),
   ).toBeEnabled();
@@ -652,6 +729,10 @@ try {
   );
   await page.reload();
   await clipsLoaded;
+  await page
+    .getByRole("button", { name: "Open in Developed Models", exact: true })
+    .click();
+  await page.locator(".revision-action-controls summary").click();
   await expect(rehearsalCopy).toBeDisabled();
   releaseSession();
   await expect(rehearsalCopy).toBeEnabled();
@@ -753,7 +834,7 @@ try {
   });
   await page.getByRole("button", { name: "2D Concepts", exact: true }).click();
   await selectRevision("concept-r2");
-  await expect(prototypeCopy).toBeDisabled();
+  await expect(prototypeCopy).toHaveCount(0);
   const conceptManifest = (
     await service.store.read("empty-studio")
   ).revisions.find((revision) => revision.id === "concept-r2")?.files;
@@ -809,12 +890,19 @@ try {
     ...imageNames.map((angle) => angle + ".png"),
   ]);
   await selectRevision("concept-r1");
-  await expect(prototypeCopy).toBeDisabled();
-  await checkCopy("Copy detailed 2D concept prompt", [
-    "exact revision concept-r2",
-    "parentId concept-r2, stage sketch",
+  await expect(prototypeCopy).toHaveCount(0);
+  await expect(turnaroundCopy).toHaveCount(0);
+  await checkCopy("Copy concept revision prompt", [
+    "parentId concept-r1, stage sketch",
   ]);
   assert.equal((await service.store.read("empty-studio")).revisions.length, 5);
+  if (process.env.SCENE_LOOM_TEST_CHECKOUT)
+    await checkLinkedRehearsal(
+      process.env.SCENE_LOOM_TEST_CHECKOUT,
+      root,
+      service,
+      page,
+    );
   assert.deepEqual(errors, []);
   assert.deepEqual(failed, []);
   await writeFile(

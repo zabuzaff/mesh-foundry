@@ -499,3 +499,54 @@ The prototype review button copies a read-only brief pinned to the selected
 prototype and its linked concept. The reviewer inspects the exported GLB
 and returns numbered annotated captures for visible findings, plus a
 correction prompt when warranted. The owner decides what to send back.
+
+## Standalone copy prompts — 2026-11-16
+
+All work opens the selected revision in its stage. Each stage puts one primary
+action beside the revision identity, with other actions under More actions.
+Project actions owns Copy new concept prompt. The default worktable task
+summary was removed.
+
+Independent prototype and developed model reviews retain numbered annotated
+GLB evidence and save verified issues through `finding.add`. Correction
+prompts include open findings and owner feedback for the selected revision
+only, and create a new unapproved candidate. Creative direction is optional.
+The owner still accepts the exact revision in Foundry.
+
+Build, 23 automated tests, formatting, and the isolated Chrome fixture checks
+passed. Chrome checked stage navigation from an older prototype, concept
+creation and advancement prompts, both standalone correction prompts, and the
+existing Scene Rehearsal clipboard action. Desktop and 390 px captures were
+inspected. Independent review caught selection and loading edge cases that
+were fixed before the final browser run.
+
+Per the owner's instruction, Scene Loom record reading, linked fit prompts and
+the rehearsal-linked correction fixture are deferred until the documented
+contract arrives. The live Kairo desk kit and personal libraries were untouched.
+
+## Rehearsal linked copy prompts — 2026-11-16
+
+Implemented the finalized Scene Loom lookup and writeback contract. The
+optional asset link pins the owning project, storyboard, scene and requirement.
+Foundry reads the active record through the configured Scene Loom CLI and
+copies the measurement basis, rehearsal head, exact source, required checks
+and current candidate evidence. Copying refreshes the record and stops if the
+result changed. Superseded revisions and stale reviews show recovery actions.
+
+Model development and correction prompts specify candidate writeback. Review
+prompts preserve Foundry findings and specify candidate review writeback.
+The fit prompt pins the exact owner accepted model, import identity and
+rehearsal head, then specifies fit evidence writeback.
+
+The build, automated tests and isolated browser fixture passed. The fixture
+used the real Scene Loom CLI and confirmed that linked correction includes
+the exact measured requirements and both apps' findings. It checked fit
+prompt identity, stale data at copy time, manual refresh and navigation back
+to the exact linked candidate. It did not run a live fit check or touch Kairo.
+
+Follow-up review fixes bind clipboard preflight to the Foundry project version
+as well as the Scene Loom snapshot. A developed successor can copy a writeback
+prompt to recover after a publication succeeds but recording fails. The
+isolated Chrome fixture resolved a finding during copy and verified that the
+clipboard stayed unchanged. It also verified that the recovery prompt pins
+the existing successor and its parent. Build and formatting passed.

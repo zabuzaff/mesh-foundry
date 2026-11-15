@@ -194,11 +194,34 @@ the service. Existing projects, backups and portable imports retain their stored
 stages and revisions; existing 3D-only work can be refined by linking to its
 existing same-stage source.
 
-**Copy revision prompt** stays available for every selected revision. Approved
-concepts expose **Copy 3D prototype prompt**; approved prototypes expose **Copy
-developed model prompt**. Unapproved revisions show the exact revision that
-needs approval. These actions only write text to the clipboard: they never start
-generation, approve a revision or send a chat message.
+**All work** shows the selected revision's stage and status. Open it in its
+stage tab without changing revisions, or choose a specific entry in the
+revision trail. The prominent action follows the selected revision: revise a
+concept, review or correct a 3D prototype or developed model, or advance an
+exact accepted concept or prototype. The remaining actions are under **More
+actions**. **Project actions → Copy new concept prompt** starts a separate
+asset. Copying prepares text only. Paste into Codex and send; direction is optional.
+
+Model and prototype review prompts ask the agent to inspect the exact exported
+GLB, save numbered annotated evidence, and record verified defects in an
+ordinary version-checked CLI batch:
+
+```json
+{
+  "type": "finding.add",
+  "id": "headphones-v2-fit-01",
+  "revisionId": "headphones-v2",
+  "text": "SS1: The left pad clips through the headband. Restore clearance and verify in the side view. Evidence: /absolute/SS1.png."
+}
+```
+
+Use a unique finding ID. Findings appear alongside owner feedback, with their
+origin labeled, without modifying the model or its acceptance. Copying a
+correction includes only open records on that exact revision. Reread them
+before editing, and use `feedback.resolve` only after verifying the fix. Use
+`decision.add` for lasting owner-confirmed project or asset choices. Keep
+revision defects in findings and scene-specific measurements in the scene's
+fit requirements.
 
 A compatible agent harness must read current state, decisions and feedback before
 work, verify approval of the pinned source again before publication, and publish
@@ -430,3 +453,62 @@ surface crossings and their intersecting-face bounds, minimum sampled
 vertical seat gap, and each sole's proximity to and coverage on the support.
 These checks measure geometry at one pose. Inspect the side and three-quarter
 images for the rest of the chair and for visual balance.
+
+## Rehearsal linked copy prompts
+
+Register the exact Scene Loom target and requirement on an existing Foundry asset
+with an ordinary version checked CLI batch:
+
+```json
+{
+  "type": "rehearsal.link",
+  "assetId": "sign",
+  "link": {
+    "projectId": "office",
+    "storyboardId": "storyboard_office",
+    "sceneId": "lobby",
+    "requirementId": "sign_fit"
+  }
+}
+```
+
+An asset may also supply `rehearsal` when created. Set the link to null to
+unlink it. Use the Scene Loom lookup or an owner confirmed legacy library
+mapping. A storyboard asset suggestion pin identifies a different workflow
+and does not establish a rehearsal link. If a requirement is retired or
+superseded, verify the new requirement and update the link explicitly.
+
+The Foundry service uses its configured `SCENE_LOOM_CLI_DIR` and
+`SCENE_LOOM_DATA_DIR` for read-only project and scene reads. The stage actions
+use the active requirement and saved measurement basis, candidate and current
+fit evidence. Refresh the context after work in another app. If evidence
+changed since it loaded, the next copy attempt refreshes the action and asks
+you to check it before copying again. This check also covers Foundry changes
+such as a resolved finding or a new acceptance. An older revision can open
+the linked revision explicitly. A stale review sends you to Scene Loom to clear the
+review and record the rehearsal under that review.
+
+Paste the linked prompts into Codex for these contract actions:
+
+- **Copy developed model prompt** and **Copy developed model correction
+  prompt** publish a new linked Foundry revision, then record a Scene Loom
+  `candidate` event. The copied base is the active requirement's source or
+  current candidate. Foundry's publication retains the exact selected parent.
+  Interim concepts and prototypes remain Foundry revisions.
+- **Copy candidate writeback prompt** appears on a developed successor when
+  Scene Loom still points to its source. It asks Codex to verify the existing
+  revision's provenance and record it without publishing another model.
+- **Copy developed model review prompt** saves exact candidate findings in
+  Foundry. It asks the agent to record `candidate-review` when applicable,
+  with an accepted verdict only after verifying Foundry owner acceptance and
+  conformance to the measurements.
+- **Copy rehearsal fit-check prompt** becomes available for the eligible
+  owner-accepted linked candidate. It asks the agent to verify its model
+  identity and recorded rehearsal head, import and test the model in Scene
+  Rehearsal, and record a `fit` event in Scene Loom.
+
+These buttons prepare prompts. Any writeback is executed by the agent through
+the corresponding app's CLI, with version and predecessor checks. Foundry
+owner acceptance stays separate from fit. Run the linked browser fixture
+with `SCENE_LOOM_TEST_CHECKOUT=/absolute/scene-loom npm run test:browser`
+after building. It starts an isolated Scene Loom service.

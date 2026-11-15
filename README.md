@@ -34,7 +34,7 @@ npm run build
 npm start
 ```
 
-Open http://127.0.0.1:4323. The default personal library starts empty. Use **Copy starting prompt** to direct Codex to the [agent interface](docs/agent-interface.md), then publish sketches or editable 3D revisions through the CLI. Rebuild and restart after source changes. Set an absolute MESH_FOUNDRY_DATA_DIR to use a separate library.
+Open http://127.0.0.1:4323. The default personal library starts empty. Use **Project actions → Copy new concept prompt** to direct Codex to the [agent interface](docs/agent-interface.md), then publish sketches or editable 3D revisions through the CLI. Rebuild and restart after source changes. Set an absolute MESH_FOUNDRY_DATA_DIR to use a separate library.
 
 For verification, generate fixtures with `npm run proof:generate`, then run `npm test`, `npm run test:browser`, `npm run typecheck`, and `npm run format:check`. Browser tests start and stop their own isolated service on port 4324 and require Chrome. They never use your personal library.
 

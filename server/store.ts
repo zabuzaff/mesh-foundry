@@ -411,6 +411,12 @@ export class Store {
           if (op.type === "category.create")
             p.categories.push({ id: op.id, name: op.name });
           if (op.type === "asset.create") p.assets.push(op.asset);
+          if (op.type === "rehearsal.link") {
+            const asset = p.assets.find((entry) => entry.id === op.assetId);
+            if (!asset) throw Error("Rehearsal link asset not found");
+            if (op.link) asset.rehearsal = op.link;
+            else delete asset.rehearsal;
+          }
           if (op.type === "task.set") p.currentTask = op.text;
           if (op.type === "decision.add")
             p.decisions.push({
@@ -420,6 +426,18 @@ export class Store {
               supersedes: op.supersedes,
               createdAt: now(),
             });
+          if (op.type === "finding.add") {
+            if (!p.revisions.some((r) => r.id === op.revisionId))
+              throw Error("Finding revision not found");
+            p.feedback.push({
+              id: op.id,
+              revisionId: op.revisionId,
+              text: op.text,
+              origin: "agent-review",
+              resolved: false,
+              createdAt: now(),
+            });
+          }
           if (op.type === "feedback.resolve") {
             const f = p.feedback.find((f) => f.id === op.id);
             if (!f) throw Error("Feedback not found");

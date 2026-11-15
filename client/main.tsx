@@ -1,7 +1,10 @@
 import { approvedRevision, isApproved, nextStage } from "../shared/progression";
 import {
   rehearsalPrompt,
-  prototypeReviewPrompt,
+  candidateReviewPrompt,
+  linkedRehearsalAction,
+  linkedFitIdentity,
+  correctionAction,
   revisionAction,
   detailedConceptAction,
   workPrompt,
@@ -12,6 +15,7 @@ import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { motion, AnimatePresence, MotionConfig } from "motion/react";
 import { Disclosure, Selection, Transport, ease } from "./MotionUI";
+import type { RehearsalContext } from "../shared/rehearsal";
 import type { Project } from "../shared/schema";
 import type { CameraState, Pin } from "./Viewer";
 import "./fonts.css";
@@ -158,10 +162,55 @@ function App() {
       revisions.find((r) => r.id === revisionId) ??
       (revisionId === "[missing]"
         ? revisions.filter((r) => stage === "all" || r.stage === stage).at(-1)
-        : revisions.at(-1)),
+        : revisionId
+          ? undefined
+          : revisions.at(-1)),
     modelFile = revision?.files.find((f) => f.kind === "model"),
     other = revisions.find((r) => r.id === compare),
     duration = revision?.clips.find((c) => c.name === clip)?.duration ?? 2;
+  const link = asset?.rehearsal;
+  const linkKey = link && p ? JSON.stringify([p.id, assetId, link]) : "";
+  const linkUrl =
+    linkKey && p ? `/api/projects/${p.id}/assets/${assetId}/rehearsal` : "";
+  type LinkedResult = RehearsalContext & {
+    sceneLoom: { checkout: string; dataRoot: string };
+    foundryVersion: number;
+  };
+  const [linked, setLinked] = useState<{
+    key: string;
+    result?: LinkedResult;
+    error?: string;
+  }>();
+  const [rehearsalRefresh, refreshRehearsal] = useState(0);
+  const lookupKey = JSON.stringify([linkKey, p?.version, rehearsalRefresh]);
+  const currentLookupKey = useRef(lookupKey);
+  currentLookupKey.current = lookupKey;
+  useEffect(() => {
+    if (!linkUrl) return;
+    let active = true;
+    get(linkUrl)
+      .then((result) => {
+        if (active) setLinked({ key: lookupKey, result });
+      })
+      .catch((error: Error) => {
+        if (active) setLinked({ key: lookupKey, error: error.message });
+      });
+    return () => {
+      active = false;
+    };
+  }, [linkUrl, lookupKey]);
+  useEffect(() => {
+    if (!linkUrl) return;
+    const refresh = () => refreshRehearsal((n) => n + 1);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [linkUrl]);
+  const observed = linked?.key === lookupKey ? linked : undefined;
+  const context =
+    observed?.result?.status === "ready" &&
+    observed.result.foundryVersion === p?.version
+      ? observed.result
+      : undefined;
   const [view, setView] = useState<{ key: string; index: number }>();
   const conceptImages = revision?.files.filter((f) => f.kind === "image") ?? [];
   const viewKey = JSON.stringify([p?.id, revision?.id]);
@@ -324,6 +373,236 @@ function App() {
   }
   const feedback =
     p?.feedback.filter((f) => f.revisionId === revision?.id) ?? [];
+  const actions: { label: string; run: () => void; disabled?: boolean }[] = [];
+  let linkMessage =
+    observed?.error ??
+    (observed?.result?.status !== "ready"
+      ? observed?.result?.message
+      : undefined);
+  let offerLinkedRevision = false;
+  const linkedSource = context?.candidate?.model ?? context?.requirement.source;
+  if (p && revision && link && context && linkedSource) {
+    const sourceRevision = revisions.find(
+      (r) => r.id === linkedSource.revisionId,
+    );
+    let cursor = revision;
+    const walked = new Set<string>();
+    while (
+      cursor.parentId &&
+      cursor.id !== linkedSource.revisionId &&
+      !walked.has(cursor.id)
+    ) {
+      walked.add(cursor.id);
+      const parent = revisions.find((r) => r.id === cursor.parentId);
+      if (!parent) break;
+      cursor = parent;
+    }
+    const isIntermediate =
+      !context.candidate &&
+      sourceRevision?.stage !== "model" &&
+      revision.stage !== "model" &&
+      cursor.id === linkedSource.revisionId;
+    const copyLinked = async (prompt: string) => {
+      try {
+        const current = await get(linkUrl);
+        if (
+          currentLookupKey.current !== lookupKey ||
+          liveDraft.current.revisionId !== revision.id ||
+          selectedProject.current !== p.id
+        )
+          return;
+        if (JSON.stringify(current) !== JSON.stringify(context)) {
+          setLinked({ key: lookupKey, result: current });
+          setError(
+            "Rehearsal context changed. Check the updated action before copying.",
+          );
+          return;
+        }
+        await copyText(prompt);
+      } catch (error) {
+        if (currentLookupKey.current !== lookupKey) return;
+        setLinked({ key: lookupKey, error: (error as Error).message });
+      }
+    };
+    if (revision.id !== linkedSource.revisionId && !isIntermediate) {
+      offerLinkedRevision = true;
+      linkMessage = `The active rehearsal handoff targets ${linkedSource.revisionId}.`;
+      const intermediateParent =
+        !context.candidate &&
+        sourceRevision?.stage !== "model" &&
+        cursor.id === linkedSource.revisionId &&
+        revisions.find((r) => r.id === revision.parentId)?.stage === "study";
+      if (
+        revision.stage === "model" &&
+        (revision.parentId === linkedSource.revisionId || intermediateParent)
+      ) {
+        actions.push({
+          label: "Copy candidate writeback prompt",
+          run: () =>
+            copyLinked(
+              workPrompt(
+                repo,
+                dataRoot!,
+                p,
+                assetId,
+                revision,
+                linkedRehearsalAction(context, "recover", revision),
+              ),
+            ),
+        });
+      }
+    } else {
+      const approved = isApproved(p, revision);
+      const hasFindings =
+        feedback.some((f) => !f.resolved) ||
+        context.acceptance?.verdict === "needs-revision" ||
+        context.fit?.verdict === "model-defect";
+      const wrap = (
+        purpose: Parameters<typeof linkedRehearsalAction>[1],
+        action: string,
+      ) =>
+        copyLinked(
+          workPrompt(
+            repo,
+            dataRoot!,
+            p,
+            assetId,
+            revision,
+            `${linkedRehearsalAction(context, purpose)}\n\n${action}`,
+          ),
+        );
+      const kind =
+        revision.stage === "model" ? "developed model" : "3D prototype";
+      if (revision.stage === "model" && (hasFindings || !context.candidate))
+        actions.push({
+          label: hasFindings
+            ? "Copy developed model correction prompt"
+            : "Copy developed model revision prompt",
+          run: () => wrap("develop", correctionAction(p, revision)),
+        });
+      if (
+        revision.stage === "model" &&
+        approved &&
+        context.candidate &&
+        context.acceptance?.verdict !== "needs-revision" &&
+        context.fit?.verdict !== "model-defect" &&
+        modelFile
+      )
+        actions.push({
+          label: "Copy rehearsal fit-check prompt",
+          disabled: !rehearsalClips,
+          run: () =>
+            wrap(
+              "fit",
+              linkedFitIdentity(p, revision, modelFile.hash, rehearsalClips!),
+            ),
+        });
+      if (revision.stage !== "sketch")
+        actions.push({
+          label: `Copy ${kind} review prompt`,
+          run: () =>
+            copyLinked(
+              candidateReviewPrompt(
+                repo,
+                dataRoot!,
+                p,
+                revision,
+                linkedRehearsalAction(context, "review"),
+              ),
+            ),
+        });
+      if (revision.stage === "study" && hasFindings)
+        actions.unshift({
+          label: "Copy 3D prototype correction prompt",
+          run: () => wrap("concept", correctionAction(p, revision)),
+        });
+      if (canAdvance && approved)
+        actions.unshift({
+          label:
+            revision.stage === "sketch"
+              ? "Copy 3D prototype prompt"
+              : "Copy developed model prompt",
+          run: () =>
+            wrap(
+              revision.stage === "sketch" ? "concept" : "develop",
+              revisionAction(p, revision, true),
+            ),
+        });
+      if (revision.stage === "sketch" || revision.stage === "study")
+        actions.push({
+          label:
+            revision.stage === "sketch"
+              ? "Copy concept revision prompt"
+              : "Copy revision prompt",
+          run: () => wrap("concept", revisionAction(p, revision)),
+        });
+      if (concept && revision.id === concept.id)
+        actions.push({
+          label: "Copy detailed 2D concept prompt",
+          run: () => wrap("concept", detailedConceptAction(p, concept)),
+        });
+      if (context.staleFit)
+        linkMessage =
+          "The rehearsal head changed. Run a new fit check before relying on the earlier result.";
+    }
+  }
+  if (p && revision && !link) {
+    const approved = isApproved(p, revision);
+    const revise = {
+      label:
+        revision.stage === "sketch"
+          ? "Copy concept revision prompt"
+          : "Copy revision prompt",
+      run: () => copy(revisionAction(p, revision)),
+    };
+    if (canAdvance && approved)
+      actions.push({
+        label:
+          revision.stage === "sketch"
+            ? "Copy 3D prototype prompt"
+            : "Copy developed model prompt",
+        run: () => copy(revisionAction(p, revision, true)),
+      });
+    if (revision.stage === "sketch" || mode === "animation")
+      actions.push(revise);
+    else {
+      const kind =
+        revision.stage === "study" ? "3D prototype" : "developed model";
+      if (feedback.some((f) => !f.resolved))
+        actions.push({
+          label: `Copy ${kind} correction prompt`,
+          run: () => copy(correctionAction(p, revision)),
+        });
+      if (modelFile)
+        actions.push({
+          label: `Copy ${kind} review prompt`,
+          run: () =>
+            copyText(candidateReviewPrompt(repo, dataRoot!, p, revision)),
+        });
+      actions.push(revise);
+    }
+    if (rehearsalUrl && modelFile)
+      actions.push({
+        label: "Copy Scene Rehearsal prompt",
+        disabled: !rehearsalClips,
+        run: () =>
+          copyText(
+            rehearsalPrompt(
+              repo,
+              dataRoot!,
+              p,
+              revision,
+              modelFile.hash,
+              rehearsalClips!,
+            ),
+          ),
+      });
+    if (concept && revision.id === concept.id)
+      actions.push({
+        label: "Copy detailed 2D concept prompt",
+        run: () => copy(detailedConceptAction(p, concept)),
+      });
+  }
   return (
     <MotionConfig reducedMotion="user" transition={{ duration: 0.32, ease }}>
       <div className="studio">
@@ -353,9 +632,28 @@ function App() {
           <span className="connection" role="status">
             {connected ? "Local studio" : "Connection lost · retrying"}
           </span>
-          <button onClick={() => copy("Continue the current project task.")}>
-            Copy starting prompt
-          </button>
+          <details className="project-actions">
+            <summary>Project actions</summary>
+            <button
+              disabled={!dataRoot || Boolean(projectId && p?.id !== projectId)}
+              onClick={() =>
+                copyText(
+                  workPrompt(
+                    repo,
+                    dataRoot!,
+                    p,
+                    undefined,
+                    undefined,
+                    p
+                      ? "Create a separate asset in this project. Read the project brief and decisions, choose a useful concept if no direction is supplied, and publish only 2D Concept candidates. Preserve existing assets."
+                      : "Create a project and publish its first 2D Concept candidate. Use any supplied direction; otherwise propose a project brief before publishing.",
+                  ),
+                )
+              }
+            >
+              Copy new concept prompt
+            </button>
+          </details>
         </header>
         {error && (
           <div className="error" role="alert">
@@ -396,9 +694,9 @@ function App() {
                       }
                       key={a.id}
                       onClick={() => {
+                        if (a.id === assetId) return;
                         setAssetId(a.id);
-                        setRevisionId("");
-                        setStage("all");
+                        setRevisionId("[missing]");
                       }}
                     >
                       <svg
@@ -425,16 +723,6 @@ function App() {
                   ))}
               </section>
             ))}
-            <button
-              className="add-asset"
-              onClick={() =>
-                copy(
-                  "Create a NEW separate asset; the selected asset/revision is context only. Read the project brief and propose the next useful asset, then publish only 2D Concept candidates (stage sketch). Do not advance it to 3D or modify the selected asset.",
-                )
-              }
-            >
-              Copy new asset prompt
-            </button>
             <div className="sidebar-bottom">
               {projects.some((x) => x.status === "unreadable") && (
                 <p>Some projects need recovery. Use the CLI backup commands.</p>
@@ -471,116 +759,107 @@ function App() {
                     </h1>
                     <p>{asset.purpose || "Explore, refine, make it yours."}</p>
                   </div>
-                  <button
-                    disabled={!revision}
-                    onClick={() =>
-                      copy(
-                        p && revision
-                          ? revisionAction(p, revision)
-                          : "Select a revision to improve.",
-                      )
-                    }
-                  >
-                    Copy revision prompt
-                  </button>
                 </motion.div>
-                {p && (canAdvance || (mode === "assets" && concept)) && (
-                  <div className="progression-actions">
-                    <div className="progression-buttons">
-                      {revision && canAdvance && (
-                        <button
-                          disabled={busy || !isApproved(p, revision)}
-                          aria-describedby="progression-help"
-                          onClick={() =>
-                            copy(revisionAction(p, revision, true))
-                          }
-                        >
-                          {revision.stage === "sketch"
-                            ? "Copy 3D prototype prompt"
-                            : "Copy developed model prompt"}
-                        </button>
-                      )}
-                      {mode === "assets" &&
-                        revision?.stage === "study" &&
-                        modelFile && (
-                          <button
-                            disabled={busy || !dataRoot}
-                            onClick={() =>
-                              dataRoot &&
-                              copyText(
-                                prototypeReviewPrompt(
-                                  repo,
-                                  dataRoot,
-                                  p,
-                                  revision,
-                                ),
-                              )
-                            }
-                          >
-                            Copy 3D prototype review prompt
-                          </button>
-                        )}
-                      {mode === "assets" && concept && (
-                        <button
-                          disabled={busy || !dataRoot}
-                          onClick={() =>
-                            dataRoot &&
-                            copyText(
-                              workPrompt(
-                                repo,
-                                dataRoot,
-                                p,
-                                asset.id,
-                                concept,
-                                detailedConceptAction(p, concept, revision),
-                              ),
-                            )
-                          }
-                        >
-                          Copy detailed 2D concept prompt
-                        </button>
-                      )}
-                    </div>
-                    {revision && canAdvance && (
-                      <p id="progression-help">
-                        {isApproved(p, revision)
-                          ? `Revision ${revision.id} is approved for this stage. Copying only copies instructions; it does not start generation.`
-                          : `Approve exact revision ${revision.id} in Acceptance before advancing. You can revise it first.`}
+                {revision && (
+                  <div className="revision-actions">
+                    <div>
+                      <strong>{revision.id}</strong>
+                      <p>
+                        {stageName(revision.stage)} ·{" "}
+                        {p && isApproved(p, revision)
+                          ? "Accepted"
+                          : "Candidate"}
                       </p>
+                    </div>
+                    {mode === "assets" && stage === "all" ? (
+                      <button
+                        className="primary"
+                        onClick={() => {
+                          setRevisionId(revision.id);
+                          setStage(revision.stage);
+                        }}
+                      >
+                        Open in {stageName(revision.stage)}
+                      </button>
+                    ) : (
+                      actions.length > 0 && (
+                        <div className="revision-action-controls">
+                          <button
+                            className="primary"
+                            disabled={busy || !dataRoot || actions[0].disabled}
+                            onClick={actions[0].run}
+                          >
+                            {actions[0].label}
+                          </button>
+                          {actions.length > 1 && (
+                            <details key={viewKey}>
+                              <summary>More actions</summary>
+                              <div>
+                                {actions.slice(1).map((action) => (
+                                  <button
+                                    key={action.label}
+                                    disabled={
+                                      busy || !dataRoot || action.disabled
+                                    }
+                                    onClick={action.run}
+                                  >
+                                    {action.label}
+                                  </button>
+                                ))}
+                                {rehearsalUrl && dataRoot === "" && (
+                                  <p>
+                                    Could not locate the source library. Reload
+                                    to retry.
+                                  </p>
+                                )}
+                                {currentClipMetadata && !rehearsalClips && (
+                                  <p>
+                                    Could not read embedded clip names. Reload
+                                    to retry.
+                                  </p>
+                                )}
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      )
                     )}
                   </div>
                 )}
-                {rehearsalUrl && p && revision && modelFile && (
-                  <div className="progression-actions">
-                    <button
-                      disabled={busy || !dataRoot || !rehearsalClips}
-                      onClick={() =>
-                        dataRoot &&
-                        rehearsalClips &&
-                        copyText(
-                          rehearsalPrompt(
-                            repo,
-                            dataRoot,
-                            p,
-                            revision,
-                            modelFile.hash,
-                            rehearsalClips,
-                          ),
-                        )
-                      }
-                    >
-                      Copy Scene Rehearsal prompt
-                    </button>
-                    {dataRoot === "" && (
-                      <p>
-                        Could not locate the source library. Reload to retry.
-                      </p>
-                    )}
+                {link && stage !== "all" && (
+                  <div className="rehearsal-context">
+                    <p role="status">
+                      {linkMessage ??
+                        (context
+                          ? `Rehearsal requirement ${context.requirement.name} · measured in ${context.measuredIn.revisionId}`
+                          : "Loading rehearsal context…")}
+                    </p>
+                    {linkedSource &&
+                      revision?.id !== linkedSource.revisionId &&
+                      (!revision || offerLinkedRevision) &&
+                      revisions.some(
+                        (r) => r.id === linkedSource.revisionId,
+                      ) && (
+                        <button
+                          onClick={() => {
+                            const source = revisions.find(
+                              (r) => r.id === linkedSource.revisionId,
+                            )!;
+                            setRevisionId(source.id);
+                            setStage(source.stage);
+                          }}
+                        >
+                          Open linked revision
+                        </button>
+                      )}
                     {currentClipMetadata && !rehearsalClips && (
                       <p>
-                        Could not read embedded clip names. Reload to retry.
+                        Could not read embedded model clips. Reload to retry.
                       </p>
                     )}
+                    <button onClick={() => refreshRehearsal((n) => n + 1)}>
+                      Refresh rehearsal context
+                    </button>
                   </div>
                 )}
                 <AnimatePresence initial={false}>
@@ -654,6 +933,8 @@ function App() {
                         key={s}
                         onClick={() => {
                           setStage(s);
+                          if (revision && (s === "all" || s === revision.stage))
+                            return;
                           const r = revisions
                             .filter((r) => s === "all" || r.stage === s)
                             .at(-1);
@@ -892,23 +1173,32 @@ function App() {
                   </>
                 ) : (
                   <div className="stage-empty">
-                    No {stageName(stage)} candidate yet.{" "}
-                    {stage === "study" || stage === "model" ? (
-                      <span>
-                        Select and approve an exact{" "}
-                        {stage === "study" ? "2D Concept" : "3D Prototype"}{" "}
-                        revision, then use its advancement prompt.
-                      </span>
+                    {revisionId && revisionId !== "[missing]" ? (
+                      <p>
+                        The selected revision is no longer available. Choose
+                        another revision from the trail.
+                      </p>
                     ) : (
-                      <button
-                        onClick={() =>
-                          copy(
-                            "Create a new 2D Concept candidate for this asset (stored stage: sketch). Read current decisions and feedback first. Do not advance to 3D.",
-                          )
-                        }
-                      >
-                        Copy concept prompt
-                      </button>
+                      <>
+                        No {stageName(stage)} candidate yet.{" "}
+                        {stage === "study" || stage === "model" ? (
+                          <span>
+                            Select and approve an exact{" "}
+                            {stage === "study" ? "2D Concept" : "3D Prototype"}{" "}
+                            revision, then use its advancement prompt.
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              copy(
+                                "Create a new 2D Concept candidate for this asset (stored stage: sketch). Read current decisions and feedback first. Do not advance to 3D.",
+                              )
+                            }
+                          >
+                            Copy concept prompt
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -922,24 +1212,21 @@ function App() {
                           key={r.id}
                           onClick={() => {
                             setRevisionId(r.id);
-                            setStage("all");
+                            if (mode === "assets") setStage(r.stage);
                           }}
                         >
                           {r.id === revision?.id && (
                             <Selection id="selected-revision" />
                           )}
                           <strong>{r.id}</strong>
+                          <span>
+                            {stageName(r.stage)} ·{" "}
+                            {p && isApproved(p, r) ? "Accepted" : "Candidate"}
+                          </span>
                           <span>{r.summary}</span>
                         </button>
                       ))}
                     </div>
-                  </div>
-                  <div>
-                    <h2>Next on the worktable</h2>
-                    <p>
-                      {p?.currentTask ||
-                        "Ask Codex to develop the next candidate."}
-                    </p>
                   </div>
                 </div>
               </>
@@ -999,14 +1286,20 @@ function App() {
                 >
                   Save feedback
                 </button>
-                <div className="feedback-list">
+                <div
+                  className="feedback-list"
+                  aria-label="Review findings and owner feedback"
+                >
                   {feedback.map((f, i) => (
                     <article key={f.id}>
                       <span className="note-number">{i + 1}</span>
                       <div>
                         <p>{f.text}</p>
                         <small>
-                          {f.resolved ? "Resolved" : "Open"}
+                          {f.origin === "agent-review"
+                            ? "Review finding"
+                            : "Owner feedback"}{" "}
+                          · {f.resolved ? "Resolved" : "Open"}
                           {f.pin
                             ? ` · ${f.pin.objectId} · ${f.pin.time.toFixed(2)}s`
                             : ""}
@@ -1033,16 +1326,6 @@ function App() {
                     </article>
                   ))}
                 </div>
-                <button
-                  disabled={!feedback.length}
-                  onClick={() =>
-                    copy(
-                      "Address the open feedback on this exact revision. Read all feedback IDs and preserve the accepted source.",
-                    )
-                  }
-                >
-                  Copy feedback prompt
-                </button>
                 <Disclosure className="accept-section" title="Acceptance">
                   <p>
                     {p && isApproved(p, revision)
@@ -1085,11 +1368,11 @@ function App() {
                 .map((d) => (
                   <p key={d.id}>{d.text}</p>
                 ))}
-              {!p?.decisions.length && (
-                <p className="muted">
-                  Decisions recorded with Codex will appear here.
-                </p>
-              )}
+              <p className="muted">
+                When you settle a lasting project or asset choice, ask Codex to
+                save it as a design decision. Keep defects in review findings
+                and scene measurements in the linked fit requirements.
+              </p>
             </Disclosure>
           </aside>
         </div>
@@ -1103,7 +1386,7 @@ function App() {
               exit={{ opacity: 0, y: 8, filter: "blur(3px)" }}
               transition={{ duration: 0.22 }}
             >
-              Prompt copied. Paste into your agent and add direction.
+              Prompt copied. Paste into Codex and send. Direction is optional.
             </motion.div>
           )}
         </AnimatePresence>

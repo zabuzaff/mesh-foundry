@@ -14,6 +14,11 @@ import {
 } from "../shared/references.js";
 import { z } from "zod";
 import { id, sceneLoomTarget } from "../shared/schema.js";
+import {
+  resolveRehearsal,
+  sceneEvents,
+  type RehearsalLink,
+} from "../shared/rehearsal.js";
 import { isApproved } from "../shared/progression.js";
 
 // Fixed executables are configured by the local service operator, never by browser input.
@@ -357,6 +362,52 @@ export class References {
       contentRevision: source.contentRevision,
       sceneIds: source.scenes.map((scene) => scene.id),
     };
+  }
+  async rehearsalContext(
+    link: RehearsalLink,
+    libraryId: string,
+    assetId: string,
+  ) {
+    const project = await this.generationSource(link);
+    if (!project.sceneIds.includes(link.sceneId))
+      return {
+        status: "missing",
+        message:
+          "Find the exact scene in Scene Loom and update this asset’s link.",
+      } as const;
+    const observed = z
+      .object({
+        projectId: id,
+        contentRevision: z.number().int().nonnegative(),
+        rehearsalInputRevision: z.number().int().nonnegative().optional(),
+        scene: sceneEvents,
+      })
+      .parse(
+        await this.cli(this.connection(), [
+          "scene",
+          "read",
+          link.storyboardId,
+          link.sceneId,
+        ]),
+      );
+    if (
+      observed.projectId !== link.storyboardId ||
+      observed.scene.id !== link.sceneId ||
+      observed.contentRevision !== project.contentRevision
+    )
+      return {
+        status: "stale",
+        message:
+          "Scene Loom changed during lookup. Refresh the rehearsal context.",
+      } as const;
+    return resolveRehearsal(
+      observed.scene,
+      link,
+      libraryId,
+      assetId,
+      observed.contentRevision,
+      observed.rehearsalInputRevision ?? observed.contentRevision,
+    );
   }
   async destination(target: Handoff["target"]) {
     const p = await this.cli(target, ["project", "read", target.projectId]);

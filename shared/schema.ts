@@ -45,12 +45,19 @@ export const revision = z
     fixture: z.boolean(),
   })
   .strict();
+export const rehearsalLink = z.strictObject({
+  projectId: id,
+  storyboardId: id,
+  sceneId: id,
+  requirementId: id,
+});
 export const asset = z
   .object({
     id,
     categoryId: id,
     name: z.string().min(1).max(160),
     purpose: text,
+    rehearsal: rehearsalLink.optional(),
     base: z.object({ assetId: id, revisionId: id }).strict().optional(),
   })
   .strict();
@@ -69,6 +76,7 @@ export const feedback = z
     revisionId: id,
     text: text.min(1),
     pin: pin.optional(),
+    origin: z.literal("agent-review").optional(),
     resolved: z.boolean(),
     createdAt: z.string(),
   })
@@ -179,6 +187,17 @@ export const operation = z.discriminatedUnion("type", [
     })
     .extend({ type: z.literal("scene-loom.pin") }),
   z.object({ type: z.literal("task.set"), text }).strict(),
+  z.strictObject({
+    type: z.literal("rehearsal.link"),
+    assetId: id,
+    link: rehearsalLink.nullable(),
+  }),
+  z.strictObject({
+    type: z.literal("finding.add"),
+    id,
+    revisionId: id,
+    text: text.min(1),
+  }),
   z.object({ type: z.literal("feedback.resolve"), id }).strict(),
 ]);
 export const batch = z

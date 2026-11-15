@@ -306,7 +306,7 @@ h2 {
 }
 .asset-footer {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 28px;
   margin-top: 32px;
   border-top: 1px solid var(--line);
@@ -1515,18 +1515,83 @@ textarea:focus {
   }
 }
 
-.progression-actions {
-  margin: 0 0 24px;
+.project-actions,
+.revision-action-controls details {
+  position: relative;
 }
-.progression-actions p {
+.project-actions summary,
+.revision-action-controls summary {
+  cursor: pointer;
+  padding: 8px;
+  color: var(--soft);
+}
+.project-actions > button,
+.revision-action-controls details > div {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  min-width: max-content;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.revision-action-controls details > div {
+  display: grid;
+  padding: 4px;
+}
+.revision-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-block: 0 16px;
+  overflow-wrap: anywhere;
+}
+.revision-action-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.revision-actions p {
+  margin: 2px 0 0;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 8px 0 0;
+}
+.revision-actions .primary {
+  width: auto;
+  margin: 0;
+}
+.revision-actions details button {
+  text-align: left;
+}
+@media (max-width: 650px) {
+  .revision-action-controls details > div {
+    position: static;
+    min-width: 0;
+  }
 }
 
-.progression-buttons {
+.project-actions summary:focus-visible,
+.revision-action-controls summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.revision-action-controls details p {
+  padding: 4px 8px;
+  max-width: 24ch;
+}
+
+.rehearsal-context {
   display: flex;
+  align-items: baseline;
   flex-wrap: wrap;
   gap: 8px;
+  margin-block: 0 16px;
+}
+.rehearsal-context p {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
