@@ -298,6 +298,132 @@ feedback context. Copying is clipboard-only and approval remains an owner action
 The production build, 23 unit tests, formatting check and isolated Chrome
 assertions passed. Reviewed desktop concept and narrow prototype captures.
 
+## Curls authoring proof — 2026-11-14
+
+Added an experimental Blender-backed glasses fitting command and local
+comparison framing. A 0.025-unit setback moved only the five frame meshes
+after reopening the edited source. The side profile sits closer to the face,
+but mesh intersection checks found more rim overlap with the nose. Keep this
+output as proof of the edit and inspection loop. A fitted candidate needs
+local rim or bridge shaping before owner review.
+
+The follow-up adds shared depth relief to the inner rims and bridge. At
+0.025 setback and 0.05 relief, the reopened Blender mesh had zero rim–nose
+surface intersections versus 30 overlapping face pairs per rim in the
+original. Bridge contact and the front projection were preserved.
+
+Published the corrected fit as the unapproved
+`kairo-researcher-curls-glasses-fit-study-1` child of
+`kairo-researcher-curls-study-1`. Added a local wrapper for hash verification,
+fitting, matched views, and a contact report. The owner still reviews visual fit
+before accepting the study.
+
+## Curls hair proof — 2026-11-14
+
+Published `kairo-researcher-curls-hair-fit-study-1` as an unapproved child of
+the glasses-fit study. The pinned Blender operation varies curl heights,
+scales and tilt while protecting the glasses-adjacent fringe. The initial
+pass obscured a rim, which was caught and corrected in matched renders. This
+is a Curls-specific visual experiment with editable rounded hair volumes.
+
+## Curls elbow proof — 2026-11-14
+
+The local `scripts/test-curls-elbow.py` operation pins the hair-fit Blender
+source by hash and tests one weighted sleeve with an upper-arm and forearm
+chain. The editable Blender source stores neutral at frame 1 and a 90-degree
+bend at frame 25. Both static GLB poses were baked after reopening the source,
+and baked vertices were checked against the evaluated rig. Matched renders
+show a continuous sleeve with a rounded elbow and abbreviated forearm.
+The live study-stage acceptance still pointed to the original prototype,
+so the proof remains local and the project review state was left intact.
+
+The owner found the bent forearm too short in profile. A local follow-up
+raised the elbow pivot from 0.79 to 0.85 and narrowed the weight blend
+from 0.24 to 0.15. The matched profile shows clearer forearm reach, with
+a visible crease on the inside of the sleeve. The tuned proof stays local.
+
+The tuned elbow was sampled through a bend and release in a matched profile.
+Frame 13 captures the 45-degree pose. The cuff reads as continuous at the
+midpoint; the inner crease is most visible near full flexion. The experimental
+elbow command supports `--loop --elbow-z .85 --blend-width .15` for the
+editable loop and baked neutral, midpoint and full-bend poses.
+
+## Curls seated proof — 2026-11-14
+
+Added a local Blender proof with a pelvis and two weighted leg chains on
+the tuned elbow rig. Both feet stayed on the ground after GLB reimport
+once evaluated transforms were baked into the static exports. Matched
+neutral and seated views show a compact silhouette and a visible inside
+knee pinch. A chair contact check and trouser deformation tuning remain
+before this is useful as a seated candidate.
+
+Added an optional seated trouser shape key. The profile has less hip bulk,
+while the inside knee still pinches. The standing GLB vertex positions
+matched the baseline within one millionth of a Blender unit. This remains a
+local correction proof.
+
+Added optional `--knee-relief .65` to the seated trouser correction. Matched
+renders show a softer inside fold at the tested bend with some creasing
+remaining. All 38,153 exported standing vertex positions matched the
+slimmer-hip baseline exactly.
+
+A local diagnostic chair checked the corrected seated pose against a support
+surface. Both soles were at ground height in the imported GLB. The chair
+seat was fitted to the rear trouser surface at 0.123 Blender units, producing
+a very low seat. This demonstrates contact at that height. A fixed production
+chair still needs a separate clearance and pose-fit check.
+
+A local fixed-chair trial narrowed the shoes by 11% and shortened them by
+15% around the ankle. Both soles stayed at ground height after GLB import.
+The chair seat was fixed at 0.18 Blender units. The trousers still dip
+below the seat plane within the seat footprint, so this trial does not
+establish a clean seated fit.
+
+Two fixed-chair pose variants raised the knee pivot to 0.44 and 0.46
+Blender units, with matching pelvis drops to preserve ground contact.
+Both exported poses held both soles at ground level, but the lowest
+trouser vertices in the seat footprint still reached approximately
+0.122 against the 0.18 seat plane. Neither variant replaces the baseline.
+
+The 25-degree forward shin trial kept the slimmer shoes level by rotating
+the feet back and compensating for the lost vertical shin reach. Reimported
+soles remained grounded. On the fixed 0.18 seat, trouser–seat surface
+overlap fell from 268 to 184 face pairs and concentrated at the front lip.
+This remains a local pose variant with residual intersection.
+
+The upright-shin pose with slimmer shoes was tested against a shallower
+0.18-unit seat. Moving the front lip from Y=-0.07 to Y=0.035 eliminated
+detected trouser–seat surface crossings and kept both soles grounded.
+The lowest trouser vertex over the revised seat was at Z=0.262, so
+this clearance check still leaves a support gap.
+
+A raised rear cushion filled the support gap on the shallow diagnostic
+chair while retaining the fixed 0.18-unit frame and upright shins. The
+cushion reached the lowest trouser vertex over its footprint, the seat
+base registered zero surface crossings, and both imported soles stayed
+grounded. This is a chair fitted to the local proof pose.
+
+Compared the upright, slim-shoe Curls pose against the unscaled swivel
+chair from the hash-verified research desk kit study. The proposed chair
+was selected as a plausible office reference. At the test placement its
+seat top was Z=0.5525, roughly 0.291 units above the diagnostic cushion
+support. The trousers intersected the seat. Neither asset was changed.
+
+The unscaled desk swivel chair was tested with upright shins and slim shoes
+on a temporary footrest. An offset of -0.12 in Y and about +0.281 in Z
+cleared the rounded seat in the surface overlap check. The footrest top
+was set to the imported sole height. The backpack was outside the fit
+criteria. The test stayed local.
+
+## Repeatable chair-fit check — 2026-11-14
+
+The local chair-fit command checks hash-pinned GLBs and reports
+trouser–cushion surface crossings and sole support. The supported desk
+pose returned zero crossings and both soles supported. The earlier
+pose returned 230 crossings. The same command on the window nook rattan
+chair found 732 crossings at the tested placement. The second chair
+needs its own placement. All tests were local.
+
 ## Bun reference study — 2026-11-14
 
 The live project `scene-loom-6e02728c2523398103ff0475cb4ab97d84140806d22785121493258f954e9998`

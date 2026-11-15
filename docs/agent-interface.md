@@ -318,3 +318,115 @@ A compatible contract is as follows.
 
 The inbound toggle check applies to scoped concept generation and lookup.
 The selected reference-render transfer documented above is a separate workflow.
+
+## Experimental Curls glasses fitting
+
+Run the local command from the repository with Blender 5.2.3. It accepts the
+hash-verified Curls study Blender source and its approved turnaround image.
+Use the CLI project read to resolve the exact revision pair and approval
+before downloading them. The output directory must be new.
+
+```sh
+blender -b --disable-autoexec --python-exit-code 1 --python scripts/fit-glasses.py -- \
+  /absolute/kairo-curls.blend /absolute/kairo-researcher-curls-turnaround.png \
+  /absolute/fit-output --source-sha256 SOURCE_HASH --concept-sha256 CONCEPT_HASH \
+  --setback 0.025
+```
+
+The tool moves the two rims, bridge, and arms together toward the face. The
+agent chooses the setback after reviewing the profile. The image hash pins
+the reference for that judgment. The tool saves a Blender file, GLB and
+`fit.json` containing the applied parameters. Inspect front and side renders
+at matched scale and check ear, nose and eye intersections before using the
+output as a candidate.
+
+For a reproducible comparison, render the original and fitted GLBs into
+separate new directories. The second invocation reuses the first framing
+and lighting. The comparison preset renders front, right side and back.
+
+```sh
+mkdir /absolute/before /absolute/after
+blender -b -t 4 --python-exit-code 1 --python scripts/render-reference.py -- \
+  /absolute/original.glb /absolute/before comparison
+blender -b -t 4 --python-exit-code 1 --python scripts/render-reference.py -- \
+  /absolute/fit-output/kairo-curls.glb /absolute/after /absolute/before/resolved.json
+```
+
+For Curls, add `--nose-relief 0.05` to the setback command to move the
+inner rims and bridge forward together. The adjustment feathers out toward
+the outer rims and preserves the front-view vertex positions. Record and
+verify nose clearance and bridge contact on the saved geometry.
+
+To run the fit and both comparison renders together, prepare a local JSON
+manifest from a fresh CLI read. Verify that the concept is the approved sketch
+for the same asset and that the prototype names it as its parent. The command
+checks file bytes against the supplied manifest. Revision identity and
+approval come from the CLI read.
+
+```json
+{
+  "project": "project-id",
+  "conceptRevision": "concept-id",
+  "prototypeRevision": "prototype-id",
+  "files": {
+    "image": { "path": "/absolute/concept.png", "hash": "concept-sha256" },
+    "blend": { "path": "/absolute/source.blend", "hash": "blend-sha256" },
+    "model": { "path": "/absolute/source.glb", "hash": "glb-sha256" }
+  }
+}
+```
+
+```sh
+MESH_FOUNDRY_BLENDER=/opt/homebrew/bin/blender python3 scripts/fit-curls-study.py \
+  /absolute/pins.json /absolute/new-output --setback 0.025 --nose-relief 0.05
+```
+
+Inspect the images in `before/` and `after/`, the editable outputs in `fit/`,
+and the root `report.json`. Contact counts describe overlapping surface
+face pairs for each rim against the nose and bridge. Check eye and temple fit
+in the renders.
+
+## Experimental chair-fit check
+
+Run Blender locally with a new output directory. The checker uses a static
+seated GLB, the exact chair asset GLB, and an optional rectangular footrest.
+Use current CLI revision records for the chair hash and seated-source
+provenance. Pin the baked pose GLB separately by its own hash.
+
+```sh
+blender -b -t 4 --disable-autoexec --python-exit-code 1 \
+  --python scripts/check-chair-fit.py -- /absolute/fit.json /absolute/fit-output
+```
+
+```json
+{
+  "pose": {
+    "path": "/absolute/seated.glb",
+    "sha256": "pose-sha256",
+    "sourceRevision": "curls-source-study",
+    "trousers": "Continuous trousers and hips",
+    "soles": ["Shoe sole", "Shoe sole.001"],
+    "offset": [0, -0.12, 0.28134564]
+  },
+  "chair": {
+    "path": "/absolute/desk-kit.glb",
+    "sha256": "chair-sha256",
+    "revision": "desk-kit-study",
+    "root": "Upholstered swivel chair",
+    "seat": "Seat cushion",
+    "offset": [0, 0.1775, 0],
+    "yawDegrees": 180
+  },
+  "footrest": {
+    "topCentre": [0, -0.407, 0.28134557],
+    "size": [0.68, 0.57]
+  }
+}
+```
+
+Offsets use Blender world units after GLB import. Without a footrest, the
+support plane is Z=0. The completed report records input pins and placement,
+surface crossings and their intersecting-face bounds, minimum sampled
+vertical seat gap, and each sole's proximity to and coverage on the support.
+These checks measure geometry at one pose. Inspect the side and three-quarter
+images for the rest of the chair and for visual balance.

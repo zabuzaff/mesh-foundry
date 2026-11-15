@@ -3,7 +3,10 @@ import bpy, sys, json, math, struct
 from mathutils import Vector
 from pathlib import Path
 args = sys.argv[sys.argv.index("--") + 1:]
-source, out = args
+source, out, *comparison = args
+if len(comparison) > 1:
+    raise ValueError("Expected at most one comparison framing argument")
+comparison = comparison[0] if comparison else None
 out = Path(out)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 # Remove animation channels before import, so no first-clip evaluation can
@@ -45,11 +48,17 @@ deps = bpy.context.evaluated_depsgraph_get()
 points = [o.matrix_world @ Vector(c) for o in meshes for c in o.evaluated_get(deps).bound_box]
 lo = Vector([min(p[i] for p in points) for i in range(3)])
 hi = Vector([max(p[i] for p in points) for i in range(3)])
+if comparison and comparison != "comparison":
+    bounds = json.loads(Path(comparison).read_text())["bounds"]
+    lo, hi = Vector(bounds["min"]), Vector(bounds["max"])
 C = (lo+hi)/2
 D = max(hi-lo)
 if not math.isfinite(D) or D <= 0: raise RuntimeError('Invalid rest bounds')
 # glTF +Z forward -> Blender -Y, glTF +X right -> Blender +X.
 directions = {'front': Vector((0,-1,0)), 'right-side':Vector((1,0,0)), 'three-quarter':Vector((1,-1,0)).normalized()}
+if comparison:
+    directions["back"] = Vector((0,1,0))
+    del directions["three-quarter"]
 scale = 0
 for d in directions.values():
     right = d.cross(Vector((0,0,1))).normalized()
@@ -57,6 +66,8 @@ for d in directions.values():
     zs = [(p-C).z for p in points]
     scale = max(scale, 2*max(abs(x) for x in xs), 2*max(abs(z) for z in zs))
 scale *= 1.24
+if comparison and comparison != "comparison":
+    scale = json.loads(Path(comparison).read_text())["orthoScale"]
 scene = bpy.context.scene
 scene.render.engine = 'CYCLES'
 scene.cycles.device = 'CPU'
