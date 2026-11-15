@@ -229,9 +229,9 @@ try {
   await page
     .getByRole("button", { name: "3D Prototypes", exact: true })
     .click();
-  await page.locator(".revision-action-controls summary").click();
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
   await page
-    .getByRole("button", { name: "Copy revision prompt", exact: true })
+    .getByRole("menuitem", { name: "Copy revision prompt", exact: true })
     .click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   assert(prompt.includes(root));
@@ -398,7 +398,7 @@ try {
     name: "Copy 3D prototype prompt",
     exact: true,
   });
-  const turnaroundCopy = page.getByRole("button", {
+  const turnaroundCopy = page.getByRole("menuitem", {
     name: "Copy detailed 2D concept prompt",
     exact: true,
   });
@@ -416,17 +416,43 @@ try {
     const before = await service.store.read("empty-studio"),
       beforeWrites = writes;
     const button = page.getByRole("button", { name: label, exact: true });
-    if (!(await button.isVisible())) {
-      await page.locator(".revision-action-controls summary").click();
+    const item = page
+      .locator('.action-menu[data-state="open"]')
+      .getByRole("menuitem", { name: label, exact: true });
+    if (await button.isVisible()) {
+      await button.click();
+    } else {
+      if (!(await item.isVisible())) {
+        await page
+          .getByRole("button", { name: "More actions", exact: true })
+          .click();
+      }
+      await item.click();
+      await expect(page.getByRole("menu")).toHaveCount(0);
     }
-    await button.click();
     const text = await page.evaluate(() => navigator.clipboard.readText());
     for (const value of expected) assert(text.includes(value), value);
     assert(!text.includes(service.agentToken));
     assert.equal(writes, beforeWrites);
     assert.deepEqual(await service.store.read("empty-studio"), before);
   };
-  await page.locator(".project-actions summary").click();
+  const projectActions = page.getByRole("button", {
+    name: "Project actions",
+    exact: true,
+  });
+  await projectActions.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("menuitem", { name: "Copy new concept prompt" }),
+  ).toBeFocused();
+  await page.screenshot({
+    path: "artifacts/studio-project-actions.png",
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(projectActions).toBeFocused();
+  await projectActions.click();
+
   await checkCopy("Copy new concept prompt", [
     "project empty-studio",
     "Create a separate asset",
@@ -436,7 +462,6 @@ try {
       "exact revision concept-r1",
     ),
   );
-  await page.locator(".project-actions summary").click();
   await expect(
     page.getByRole("heading", { name: "Next on the worktable" }),
   ).toHaveCount(0);
@@ -463,6 +488,11 @@ try {
     .getByRole("button", { name: "Accept this revision", exact: true })
     .click();
   await expect(prototypeCopy).toBeEnabled();
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menu").screenshot({
+    path: "artifacts/studio-revision-actions.png",
+    animations: "disabled",
+  });
   await checkCopy("Copy detailed 2D concept prompt", [
     "exact revision concept-r1",
     "concept.png",
@@ -699,7 +729,7 @@ try {
     .click();
   await expect(prototypeCopy).toBeEnabled();
   const rehearsalLabel = "Copy Scene Rehearsal prompt";
-  const rehearsalCopy = page.getByRole("button", {
+  const rehearsalCopy = page.getByRole("menuitem", {
     name: rehearsalLabel,
     exact: true,
   });
@@ -732,14 +762,11 @@ try {
   await page
     .getByRole("button", { name: "Open in Developed Models", exact: true })
     .click();
-  await page.locator(".revision-action-controls summary").click();
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
   await expect(rehearsalCopy).toBeDisabled();
   releaseSession();
   await expect(rehearsalCopy).toBeEnabled();
   await page.unroute("**/api/session");
-  await page
-    .getByRole("button", { name: "Developed Models", exact: true })
-    .click();
   const identity = JSON.stringify({
     project: "empty-studio",
     asset: "crate",
@@ -767,6 +794,7 @@ try {
   });
   await checkCopy(rehearsalLabel, payload);
   assert.deepEqual(externalRequests, []);
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
   await rehearsalCopy.screenshot({
     path: "artifacts/studio-rehearsal-action.png",
   });

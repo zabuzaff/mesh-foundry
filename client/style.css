@@ -1515,30 +1515,26 @@ textarea:focus {
   }
 }
 
-.project-actions,
-.revision-action-controls details {
-  position: relative;
+.studio-select.action-trigger {
+  gap: 6px;
+  color: var(--control-muted);
 }
-.project-actions summary,
-.revision-action-controls summary {
+.studio-select.action-trigger:hover,
+.studio-select.action-trigger[data-state="open"] {
+  color: var(--text);
+}
+.select-menu.action-menu {
+  min-width: 170px;
+  max-height: var(--radix-dropdown-menu-content-available-height);
+  overflow-y: auto;
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+}
+.action-menu .select-option {
   cursor: pointer;
-  padding: 8px;
-  color: var(--soft);
+  overflow-wrap: anywhere;
 }
-.project-actions > button,
-.revision-action-controls details > div {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  z-index: 5;
-  min-width: max-content;
-  background: var(--surface-raised);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-.revision-action-controls details > div {
-  display: grid;
-  padding: 4px;
+.action-menu .select-option[data-disabled] {
+  cursor: default;
 }
 .revision-actions {
   display: flex;
@@ -1559,30 +1555,16 @@ textarea:focus {
   margin: 2px 0 0;
   color: var(--muted);
 }
-.revision-actions .primary {
-  width: auto;
-  margin: 0;
+.revision-actions .revision-next {
+  min-height: 34px;
+  padding: 8px 12px;
+  background: var(--control-raised);
+  color: var(--text);
+  font-weight: 650;
 }
-.revision-actions details button {
-  text-align: left;
+.revision-actions .revision-next:hover:not(:disabled) {
+  background: var(--control-hover);
 }
-@media (max-width: 650px) {
-  .revision-action-controls details > div {
-    position: static;
-    min-width: 0;
-  }
-}
-
-.project-actions summary:focus-visible,
-.revision-action-controls summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-.revision-action-controls details p {
-  padding: 4px 8px;
-  max-width: 24ch;
-}
-
 .rehearsal-context {
   display: flex;
   align-items: baseline;

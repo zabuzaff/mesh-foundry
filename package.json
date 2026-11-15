@@ -23,6 +23,7 @@
     "@fastify/static": "10.1.10",
     "@fontsource/dm-sans": "5.3.0",
     "@fontsource/syne": "5.3.0",
+    "@radix-ui/react-dropdown-menu": "2.2.1",
     "@radix-ui/react-select": "2.4.1",
     "fastify": "5.12.8",
     "gltf-validator": "2.0.0-dev.3.10",

@@ -550,3 +550,8 @@ prompt to recover after a publication succeeds but recording fails. The
 isolated Chrome fixture resolved a finding during copy and verified that the
 clipboard stayed unchanged. It also verified that the recovery prompt pins
 the existing successor and its parent. Build and formatting passed.
+
+Project actions and revision actions now share the studio's menu treatment.
+The next revision action uses the quieter raised control style. Inspected
+desktop and 390 px renders, and verified menu dismissal, keyboard focus and
+clipboard behavior through the isolated Chrome and Scene Loom fixtures.

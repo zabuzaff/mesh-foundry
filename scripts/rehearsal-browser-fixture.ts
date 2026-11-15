@@ -186,8 +186,11 @@ export async function checkLinkedRehearsal(
     await expect(page.locator(".rehearsal-context")).toContainText(
       "Crate clearance",
     );
-    const fit = action("Copy rehearsal fit-check prompt");
-    await page.locator(".revision-action-controls summary").click();
+    const fit = page.getByRole("menuitem", {
+      name: "Copy rehearsal fit-check prompt",
+      exact: true,
+    });
+    await action("More actions").click();
     await fit.click();
     const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
     await expect.poll(clipboard).toContain("import-model");

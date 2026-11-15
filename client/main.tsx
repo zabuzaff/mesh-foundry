@@ -1,3 +1,4 @@
+import { ActionMenu } from "./ActionMenu";
 import { approvedRevision, isApproved, nextStage } from "../shared/progression";
 import {
   rehearsalPrompt,
@@ -632,28 +633,29 @@ function App() {
           <span className="connection" role="status">
             {connected ? "Local studio" : "Connection lost · retrying"}
           </span>
-          <details className="project-actions">
-            <summary>Project actions</summary>
-            <button
-              disabled={!dataRoot || Boolean(projectId && p?.id !== projectId)}
-              onClick={() =>
-                copyText(
-                  workPrompt(
-                    repo,
-                    dataRoot!,
-                    p,
-                    undefined,
-                    undefined,
-                    p
-                      ? "Create a separate asset in this project. Read the project brief and decisions, choose a useful concept if no direction is supplied, and publish only 2D Concept candidates. Preserve existing assets."
-                      : "Create a project and publish its first 2D Concept candidate. Use any supplied direction; otherwise propose a project brief before publishing.",
+          <ActionMenu
+            label="Project actions"
+            actions={[
+              {
+                label: "Copy new concept prompt",
+                disabled:
+                  !dataRoot || Boolean(projectId && p?.id !== projectId),
+                run: () =>
+                  copyText(
+                    workPrompt(
+                      repo,
+                      dataRoot!,
+                      p,
+                      undefined,
+                      undefined,
+                      p
+                        ? "Create a separate asset in this project. Read the project brief and decisions, choose a useful concept if no direction is supplied, and publish only 2D Concept candidates. Preserve existing assets."
+                        : "Create a project and publish its first 2D Concept candidate. Use any supplied direction; otherwise propose a project brief before publishing.",
+                    ),
                   ),
-                )
-              }
-            >
-              Copy new concept prompt
-            </button>
-          </details>
+              },
+            ]}
+          />
         </header>
         {error && (
           <div className="error" role="alert">
@@ -773,7 +775,7 @@ function App() {
                     </div>
                     {mode === "assets" && stage === "all" ? (
                       <button
-                        className="primary"
+                        className="revision-next"
                         onClick={() => {
                           setRevisionId(revision.id);
                           setStage(revision.stage);
@@ -785,41 +787,28 @@ function App() {
                       actions.length > 0 && (
                         <div className="revision-action-controls">
                           <button
-                            className="primary"
+                            className="revision-next"
                             disabled={busy || !dataRoot || actions[0].disabled}
                             onClick={actions[0].run}
                           >
                             {actions[0].label}
                           </button>
                           {actions.length > 1 && (
-                            <details key={viewKey}>
-                              <summary>More actions</summary>
-                              <div>
-                                {actions.slice(1).map((action) => (
-                                  <button
-                                    key={action.label}
-                                    disabled={
-                                      busy || !dataRoot || action.disabled
-                                    }
-                                    onClick={action.run}
-                                  >
-                                    {action.label}
-                                  </button>
-                                ))}
-                                {rehearsalUrl && dataRoot === "" && (
-                                  <p>
-                                    Could not locate the source library. Reload
-                                    to retry.
-                                  </p>
-                                )}
-                                {currentClipMetadata && !rehearsalClips && (
-                                  <p>
-                                    Could not read embedded clip names. Reload
-                                    to retry.
-                                  </p>
-                                )}
-                              </div>
-                            </details>
+                            <ActionMenu
+                              key={viewKey}
+                              label="More actions"
+                              actions={actions.slice(1).map((action) => ({
+                                ...action,
+                                disabled: busy || !dataRoot || action.disabled,
+                              }))}
+                              note={
+                                rehearsalUrl && dataRoot === ""
+                                  ? "Could not locate the source library. Reload to retry."
+                                  : currentClipMetadata && !rehearsalClips
+                                    ? "Could not read embedded clip names. Reload to retry."
+                                    : undefined
+                              }
+                            />
                           )}
                         </div>
                       )
