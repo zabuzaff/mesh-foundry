@@ -264,6 +264,21 @@ h2 {
   height: 100%;
   padding: 40px 16px 16px;
 }
+.review-stage:has(.concept-image-picker) .sketch {
+  padding-bottom: 64px;
+}
+.concept-image-picker {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: center;
+}
+.concept-image-picker .studio-select {
+  min-width: 0;
+  max-width: 100%;
+}
 .playback {
   display: flex;
   align-items: center;

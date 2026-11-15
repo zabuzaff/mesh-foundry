@@ -1,8 +1,9 @@
 import { approvedRevision, isApproved, nextStage } from "../shared/progression";
 import {
   rehearsalPrompt,
+  prototypeReviewPrompt,
   revisionAction,
-  turnaroundAction,
+  detailedConceptAction,
   workPrompt,
 } from "./prompts";
 import { ReferencePanel } from "./References";
@@ -161,6 +162,12 @@ function App() {
     modelFile = revision?.files.find((f) => f.kind === "model"),
     other = revisions.find((r) => r.id === compare),
     duration = revision?.clips.find((c) => c.name === clip)?.duration ?? 2;
+  const [view, setView] = useState<{ key: string; index: number }>();
+  const conceptImages = revision?.files.filter((f) => f.kind === "image") ?? [];
+  const viewKey = JSON.stringify([p?.id, revision?.id]);
+  const imageIndex =
+    view?.key === viewKey && conceptImages[view.index] ? view.index : 0;
+  const shownImage = conceptImages[imageIndex];
   const conceptId = p && approvedRevision(p, assetId, "sketch");
   const concept = revisions.find((r) => r.id === conceptId);
   const canAdvance = revision && nextStage(revision.stage);
@@ -493,6 +500,26 @@ function App() {
                             : "Copy developed model prompt"}
                         </button>
                       )}
+                      {mode === "assets" &&
+                        revision?.stage === "study" &&
+                        modelFile && (
+                          <button
+                            disabled={busy || !dataRoot}
+                            onClick={() =>
+                              dataRoot &&
+                              copyText(
+                                prototypeReviewPrompt(
+                                  repo,
+                                  dataRoot,
+                                  p,
+                                  revision,
+                                ),
+                              )
+                            }
+                          >
+                            Copy 3D prototype review prompt
+                          </button>
+                        )}
                       {mode === "assets" && concept && (
                         <button
                           disabled={busy || !dataRoot}
@@ -505,12 +532,12 @@ function App() {
                                 p,
                                 asset.id,
                                 concept,
-                                turnaroundAction(p, concept, revision),
+                                detailedConceptAction(p, concept, revision),
                               ),
                             )
                           }
                         >
-                          Copy turnaround prompt
+                          Copy detailed 2D concept prompt
                         </button>
                       )}
                     </div>
@@ -716,11 +743,35 @@ function App() {
                           </span>
                         </div>
                         {revision.stage === "sketch" ? (
-                          <img
-                            className="sketch"
-                            src={fileUrl(revision, "image")}
-                            alt={revision.summary}
-                          />
+                          <>
+                            <img
+                              className="sketch"
+                              src={`/api/projects/${p!.id}/revisions/${revision.id}/files/${shownImage?.id}`}
+                              alt={
+                                conceptImages.length > 1
+                                  ? shownImage?.name
+                                  : revision.summary
+                              }
+                            />
+                            {conceptImages.length > 1 && (
+                              <div className="concept-image-picker">
+                                <StudioSelect
+                                  label="Concept image"
+                                  value={String(imageIndex)}
+                                  options={conceptImages.map((f, index) => ({
+                                    value: String(index),
+                                    label: f.name,
+                                  }))}
+                                  onChange={(index) =>
+                                    setView({
+                                      key: viewKey,
+                                      index: Number(index),
+                                    })
+                                  }
+                                />
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <Suspense
                             fallback={

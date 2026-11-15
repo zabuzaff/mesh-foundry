@@ -1,3 +1,4 @@
+import type { Project } from "../shared/schema.js";
 import sharp from "sharp";
 import { legacyFixture } from "./legacy-fixture.js";
 import { chromium, expect } from "@playwright/test";
@@ -393,7 +394,7 @@ try {
     exact: true,
   });
   const turnaroundCopy = page.getByRole("button", {
-    name: "Copy turnaround prompt",
+    name: "Copy detailed 2D concept prompt",
     exact: true,
   });
   await expect(turnaroundCopy).toHaveCount(0);
@@ -438,12 +439,18 @@ try {
     .getByRole("button", { name: "Accept this revision", exact: true })
     .click();
   await expect(prototypeCopy).toBeEnabled();
-  await checkCopy("Copy turnaround prompt", [
+  await checkCopy("Copy detailed 2D concept prompt", [
     "exact revision concept-r1",
     "concept.png",
-    "orthographic front, side, and back views",
-    "same neutral pose, at the same scale, without perspective",
-    "one labeled turnaround sheet containing all three views as the first image file",
+    "front, front-right, right, back-right, back, back-left, left, and front-left",
+    "scale, baseline, proportions, and design",
+    "Attach all eight separate images",
+    "Prepare only missing views",
+    "budget for the 30-file revision limit",
+    "grouping angles into labeled part sheets",
+    "create dedicated part drawings from the approved design",
+    "do not count as dedicated part drawings",
+    "carry forward all approved detail images unchanged",
     "parentId concept-r1, stage sketch",
     root,
   ]);
@@ -523,6 +530,17 @@ try {
     (await service.store.read("empty-studio")).accepted.crate,
     "concept-r1",
   );
+  await checkCopy("Copy 3D prototype review prompt", [
+    "exact revision prototype-r1",
+    "exact revision concept-r1",
+    "capture the exact exported GLB",
+    "Number the images SS1, SS2",
+    "clickable local file link using the absolute path",
+    "Put the absolute path of each annotated PNG next to its SS number",
+    "paste-ready prompt",
+    "This review is read-only",
+    root,
+  ]);
   await checkCopy("Copy revision prompt", [
     "parentId prototype-r1, stage study",
   ]);
@@ -530,7 +548,7 @@ try {
     .getByRole("button", { name: "Accept this revision", exact: true })
     .click();
   await expect(developedCopy).toBeEnabled();
-  await checkCopy("Copy turnaround prompt", [
+  await checkCopy("Copy detailed 2D concept prompt", [
     "exact revision concept-r1",
     "reviewing prototype-r1",
     "parentId concept-r1, stage sketch",
@@ -689,7 +707,114 @@ try {
     .click();
   await selectRevision("model-r1");
   await checkCopy(rehearsalLabel, payload);
-  assert.equal((await service.store.read("empty-studio")).revisions.length, 4);
+  const imageNames = [
+    "front",
+    "front-right",
+    "right",
+    "back-right",
+    "back",
+    "back-left",
+    "left",
+    "front-left",
+    "detail-hinge-profile",
+  ];
+  const viewFiles = await Promise.all(
+    imageNames.map(async (angle, index) => {
+      const path = join(root, angle + ".png");
+      await sharp({
+        create: {
+          width: 80,
+          height: 100,
+          channels: 3,
+          background: { r: 60 + (index % 7) * 20, g: 110, b: 145 },
+        },
+      })
+        .png()
+        .toFile(path);
+      return { kind: "image" as const, path };
+    }),
+  );
+  await service.store.apply("empty-studio", {
+    requestId: "detailed-concept",
+    expectedVersion: (await service.store.read("empty-studio")).version,
+    operations: [
+      {
+        type: "revision.publish",
+        id: "concept-r2",
+        parentId: "concept-r1",
+        assetId: "crate",
+        stage: "sketch",
+        summary: "Eight orthographic image fixtures and one detail",
+        files: viewFiles,
+        toolVersions: {},
+        fixture: true,
+      },
+    ],
+  });
+  await page.getByRole("button", { name: "2D Concepts", exact: true }).click();
+  await selectRevision("concept-r2");
+  await expect(prototypeCopy).toBeDisabled();
+  const conceptManifest = (
+    await service.store.read("empty-studio")
+  ).revisions.find((revision) => revision.id === "concept-r2")?.files;
+  assert(conceptManifest);
+  assert.equal(conceptManifest[0].id, conceptManifest[7].id);
+  const picker = page.getByRole("combobox", { name: "Concept image" });
+  for (const angle of [...imageNames.slice(1), imageNames[0]]) {
+    await picker.click();
+    await page
+      .getByRole("option", { name: angle + ".png", exact: true })
+      .click();
+    const image = page.getByRole("img", { name: angle + ".png", exact: true });
+    const file: Project["revisions"][number]["files"][number] =
+      conceptManifest[imageNames.indexOf(angle)];
+    assert.equal(file.name, angle + ".png");
+    await expect(image).toHaveAttribute(
+      "src",
+      `/api/projects/empty-studio/revisions/concept-r2/files/${file.id}`,
+    );
+    await expect(image).toBeVisible();
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth))
+      .toBe(80);
+  }
+  await picker.click();
+  await page.screenshot({
+    path: "artifacts/studio-eight-view-narrow.png",
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({
+    path: "artifacts/studio-eight-view-desktop.png",
+    fullPage: true,
+  });
+  await selectRevision("concept-r1");
+  await expect(picker).toHaveCount(0);
+  await expect(prototypeCopy).toBeEnabled();
+  await selectRevision("concept-r2");
+  await page
+    .getByRole("button", { name: "Accept this revision", exact: true })
+    .click();
+  await expect(prototypeCopy).toBeEnabled();
+  await checkCopy("Copy 3D prototype prompt", [
+    "exact revision concept-r2",
+    "use all 9 image files",
+    "use all eight full-asset views even if detail images are also attached",
+    "cardinal views to establish proportions and depth",
+    "diagonal views to check how the volumes join",
+    "Use dedicated part drawings to model construction and fit",
+    "follow the sketch parentId chain for this asset",
+    "parentId concept-r2, stage study",
+    ...imageNames.map((angle) => angle + ".png"),
+  ]);
+  await selectRevision("concept-r1");
+  await expect(prototypeCopy).toBeDisabled();
+  await checkCopy("Copy detailed 2D concept prompt", [
+    "exact revision concept-r2",
+    "parentId concept-r2, stage sketch",
+  ]);
+  assert.equal((await service.store.read("empty-studio")).revisions.length, 5);
   assert.deepEqual(errors, []);
   assert.deepEqual(failed, []);
   await writeFile(

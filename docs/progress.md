@@ -297,3 +297,79 @@ feedback context. Copying is clipboard-only and approval remains an owner action
 
 The production build, 23 unit tests, formatting check and isolated Chrome
 assertions passed. Reviewed desktop concept and narrow prototype captures.
+
+## Bun reference study — 2026-11-14
+
+The live project `scene-loom-6e02728c2523398103ff0475cb4ab97d84140806d22785121493258f954e9998`
+at version 47 contains asset `kairo-researcher-bun` with one concept,
+`kairo-researcher-bun-turnaround-1`. Its single PNG
+(`f_ad6b745dce9e2d517c25`, SHA-256
+`ad6b745dce9e2d517c258edd35cf85cb1f898ac862f749ecbe9fb75ddd9d21aa`)
+was hash-verified and inspected. It contains front, right and back views.
+Its summary describes extraction from an approved group sheet. The Bun
+revision itself has no accepted pointer or approval event. No owner
+decision or personal project data was changed.
+
+The concept viewer now browses every image on the existing revision
+manifest. The detailed concept prompt pins the approved sketch and asks
+for eight ordered image files as an unapproved linked revision. Prototype
+advancement still requires approval of the exact sketch and the prompt
+requires every source image.
+
+Record the baseline from the original sheet after the owner approves it
+and before the eight-view revision supersedes it. Use separate modeling
+sessions with the same agent model, Blender version, starting conditions,
+time budget, and modeling brief; keep the baseline agent blind to the
+extra angles and the eight-view agent blind to the baseline mesh. Keep
+both models as unapproved prototypes with their exact source links.
+Before the second run, check the eight images together against the
+original: align the ground, eye and shoulder heights; check how the side
+and diagonals carry the bun attachment, hairline, glasses temples and
+overall straps. Record inferred features and any contradictions for
+owner approval. Render both prototypes using the same orthographic
+angles, framing, scale, baseline and lighting. Compare head and bun
+silhouette, face and glasses placement, and body proportions; distinguish
+ambiguity resolved by the reference from clear shapes missed in modeling.
+The trial is pending; there is no fidelity result yet.
+
+Implementation verification: production build and all 23 automated tests
+passed. Chrome exercised single-sheet compatibility, all eight picker
+entries, exact revision approval, and the copied manifest. Desktop and
+narrow captures were reviewed. Independent review caught repeated file
+IDs for identical bytes and unconditional orthographic guidance for
+arbitrary eight-image sets; the picker now uses manifest position and
+the guidance applies to orthographic sets.
+
+## Mannequin-first prototype prompt — 2026-11-15
+
+Bun's local staged trial exposed pelvis and foot placement errors at the
+mannequin checkpoint. The main shapes pass improved fringe continuity
+and the final head revision corrected the nape and glasses in profile.
+The owner chose to adopt the workflow after reviewing Bun.
+
+The prototype prompt now asks for a plain mannequin, main shapes, and
+details, with editable checkpoints and matched clay renders. It keeps
+the approved concept manifest pinned and uses every image. Original
+views govern conflicts with inferred angles. Final Blender and GLB
+verification and owner review are part of the prompt.
+
+## Optional detail references and part fitting — 2026-11-15
+
+The detailed concept prompt keeps the eight full-asset views first and
+requests named detail images only when they answer a modeling or fit
+question. The prototype prompt uses the full-asset views to establish
+proportions and the detail images to clarify construction. It asks the
+agent to fit separately editable parts directly against the main form
+and review them assembled from the matched cameras. The owner plans to
+test the updated workflow on Bun.
+
+The Bun detail trial exposed a mismatch in the crop-first instructions:
+the agent supplied seven enlarged crops. The prompt now asks for
+dedicated drawings of parts that benefit from separate modeling.
+Crops can support the drawings, and the approved full-asset views
+govern how the parts look together.
+
+The prototype review button copies a read-only brief pinned to the selected
+prototype and its linked concept. The reviewer inspects the exported GLB
+and returns numbered annotated captures for visible findings, plus a
+correction prompt when warranted. The owner decides what to send back.
