@@ -454,7 +454,7 @@ vertical seat gap, and each sole's proximity to and coverage on the support.
 These checks measure geometry at one pose. Inspect the side and three-quarter
 images for the rest of the chair and for visual balance.
 
-## Rehearsal linked copy prompts
+## Scene Loom sync handoff and legacy rehearsal links
 
 Register the exact Scene Loom target and requirement on an existing Foundry asset
 with an ordinary version checked CLI batch:
@@ -478,37 +478,20 @@ mapping. A storyboard asset suggestion pin identifies a different workflow
 and does not establish a rehearsal link. If a requirement is retired or
 superseded, verify the new requirement and update the link explicitly.
 
-The Foundry service uses its configured `SCENE_LOOM_CLI_DIR` and
-`SCENE_LOOM_DATA_DIR` for read-only project and scene reads. The stage actions
-use the active requirement and saved measurement basis, candidate and current
-fit evidence. Refresh the context after work in another app. If evidence
-changed since it loaded, the next copy attempt refreshes the action and asks
-you to check it before copying again. This check also covers Foundry changes
-such as a resolved finding or a new acceptance. An older revision can open
-the linked revision explicitly. A stale review sends you to Scene Loom to clear the
-review and record the rehearsal under that review.
+**Project actions → Copy Scene Loom sync handoff** copies an inventory of
+owner-approved 3D prototypes and developed models, with exact revision IDs,
+GLB hashes and saved storyboard pins. Open the intended scene in Scene Loom
+and paste the handoff into the Codex chat working with **Sync accepted assets**.
+Use the live Loom scene mapping to verify selections and reread Foundry before
+pinning sources. Preserve valid scene pins at their approved stage and report
+replacements or ambiguous stage choices for resolution. If the sync action
+is unavailable, use the Loom CLI project and scene reads and return the
+verified manifest and gaps in chat without editing either app. Concept, development,
+review and correction prompts stay in Foundry's independent asset workflow.
 
-Paste the linked prompts into Codex for these contract actions:
-
-- **Copy developed model prompt** and **Copy developed model correction
-  prompt** publish a new linked Foundry revision, then record a Scene Loom
-  `candidate` event. The copied base is the active requirement's source or
-  current candidate. Foundry's publication retains the exact selected parent.
-  Interim concepts and prototypes remain Foundry revisions.
-- **Copy candidate writeback prompt** appears on a developed successor when
-  Scene Loom still points to its source. It asks Codex to verify the existing
-  revision's provenance and record it without publishing another model.
-- **Copy developed model review prompt** saves exact candidate findings in
-  Foundry. It asks the agent to record `candidate-review` when applicable,
-  with an accepted verdict only after verifying Foundry owner acceptance and
-  conformance to the measurements.
-- **Copy rehearsal fit-check prompt** becomes available for the eligible
-  owner-accepted linked candidate. It asks the agent to verify its model
-  identity and recorded rehearsal head, import and test the model in Scene
-  Rehearsal, and record a `fit` event in Scene Loom.
-
-These buttons prepare prompts. Any writeback is executed by the agent through
-the corresponding app's CLI, with version and predecessor checks. Foundry
-owner acceptance stays separate from fit. Run the linked browser fixture
-with `SCENE_LOOM_TEST_CHECKOUT=/absolute/scene-loom npm run test:browser`
-after building. It starts an isolated Scene Loom service.
+The legacy rehearsal link operation and read endpoint remain available to
+existing callers. The read endpoint uses the configured `SCENE_LOOM_CLI_DIR`
+and `SCENE_LOOM_DATA_DIR`. The studio copy actions do not depend on that
+endpoint. Run the linked browser fixture with
+`SCENE_LOOM_TEST_CHECKOUT=/absolute/scene-loom npm run test:browser` after
+building. It uses an isolated Scene Loom service.

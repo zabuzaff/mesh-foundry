@@ -555,3 +555,23 @@ Project actions and revision actions now share the studio's menu treatment.
 The next revision action uses the quieter raised control style. Inspected
 desktop and 390 px renders, and verified menu dismissal, keyboard focus and
 clipboard behavior through the isolated Chrome and Scene Loom fixtures.
+
+## Scene Loom accepted-asset sync handoff — 2026-11-17
+
+Foundry now copies one read-only source inventory from Project actions. It
+includes exact stage approvals and GLB hashes, and directs Codex to verify live
+scene selections in Loom. Linked assets use the same independent builder,
+review and correction actions as other assets. The legacy rehearsal link and
+read endpoints remain supported.
+
+For Cozy 3D scene `office`, the live Loom brief had 17 selected or optional
+Foundry sources, all pinned to currently accepted prototypes in Kairo library
+version 110. Foundry also held accepted developed models for the office shell
+(model 2), desk kit (model 1) and Market Desk (model 1). The Market Desk
+arrow-gap finding was open. The shared researcher rig was explicitly excluded,
+and Loom identified the Practice Account ledger as missing. No acceptance,
+feedback, revision or scene records were changed.
+
+Verified the build, 23 unit tests, the Chrome clipboard suite with an isolated
+Loom service, legacy rehearsal and clip reads, and read-only copying against
+live Kairo.

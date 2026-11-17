@@ -1,10 +1,8 @@
 import { ActionMenu } from "./ActionMenu";
 import { approvedRevision, isApproved, nextStage } from "../shared/progression";
 import {
-  rehearsalPrompt,
+  acceptedAssetHandoff,
   candidateReviewPrompt,
-  linkedRehearsalAction,
-  linkedFitIdentity,
   correctionAction,
   revisionAction,
   detailedConceptAction,
@@ -16,7 +14,6 @@ import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { motion, AnimatePresence, MotionConfig } from "motion/react";
 import { Disclosure, Selection, Transport, ease } from "./MotionUI";
-import type { RehearsalContext } from "../shared/rehearsal";
 import type { Project } from "../shared/schema";
 import type { CameraState, Pin } from "./Viewer";
 import "./fonts.css";
@@ -65,11 +62,6 @@ function App() {
     [connected, setConnected] = useState(true),
     [copied, setCopied] = useState(""),
     [dataRoot, setDataRoot] = useState<string>(),
-    [clipMetadata, setClipMetadata] = useState<{
-      url: string;
-      hash: string;
-      clips?: (string | null)[];
-    }>(),
     [busy, setBusy] = useState(false);
   const time = useRef(0),
     camera = useRef<CameraState | null>(null),
@@ -169,49 +161,6 @@ function App() {
     modelFile = revision?.files.find((f) => f.kind === "model"),
     other = revisions.find((r) => r.id === compare),
     duration = revision?.clips.find((c) => c.name === clip)?.duration ?? 2;
-  const link = asset?.rehearsal;
-  const linkKey = link && p ? JSON.stringify([p.id, assetId, link]) : "";
-  const linkUrl =
-    linkKey && p ? `/api/projects/${p.id}/assets/${assetId}/rehearsal` : "";
-  type LinkedResult = RehearsalContext & {
-    sceneLoom: { checkout: string; dataRoot: string };
-    foundryVersion: number;
-  };
-  const [linked, setLinked] = useState<{
-    key: string;
-    result?: LinkedResult;
-    error?: string;
-  }>();
-  const [rehearsalRefresh, refreshRehearsal] = useState(0);
-  const lookupKey = JSON.stringify([linkKey, p?.version, rehearsalRefresh]);
-  const currentLookupKey = useRef(lookupKey);
-  currentLookupKey.current = lookupKey;
-  useEffect(() => {
-    if (!linkUrl) return;
-    let active = true;
-    get(linkUrl)
-      .then((result) => {
-        if (active) setLinked({ key: lookupKey, result });
-      })
-      .catch((error: Error) => {
-        if (active) setLinked({ key: lookupKey, error: error.message });
-      });
-    return () => {
-      active = false;
-    };
-  }, [linkUrl, lookupKey]);
-  useEffect(() => {
-    if (!linkUrl) return;
-    const refresh = () => refreshRehearsal((n) => n + 1);
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [linkUrl]);
-  const observed = linked?.key === lookupKey ? linked : undefined;
-  const context =
-    observed?.result?.status === "ready" &&
-    observed.result.foundryVersion === p?.version
-      ? observed.result
-      : undefined;
   const [view, setView] = useState<{ key: string; index: number }>();
   const conceptImages = revision?.files.filter((f) => f.kind === "image") ?? [];
   const viewKey = JSON.stringify([p?.id, revision?.id]);
@@ -221,40 +170,6 @@ function App() {
   const conceptId = p && approvedRevision(p, assetId, "sketch");
   const concept = revisions.find((r) => r.id === conceptId);
   const canAdvance = revision && nextStage(revision.stage);
-  const rehearsalUrl =
-    mode === "assets" &&
-    (stage === "all" || stage === "model") &&
-    p &&
-    revision?.stage === "model" &&
-    modelFile &&
-    isApproved(p, revision)
-      ? `/api/projects/${p.id}/revisions/${revision.id}/files/${modelFile.id}/clips`
-      : "";
-  const rehearsalHash = modelFile?.hash;
-  const currentClipMetadata =
-    clipMetadata?.url === rehearsalUrl && clipMetadata.hash === rehearsalHash
-      ? clipMetadata
-      : undefined;
-  const rehearsalClips = currentClipMetadata?.clips;
-  useEffect(() => {
-    if (!rehearsalUrl || !rehearsalHash) return;
-    let active = true;
-    get(rehearsalUrl)
-      .then(({ hash, clips }) => {
-        if (active)
-          setClipMetadata({
-            url: rehearsalUrl,
-            hash: rehearsalHash,
-            clips: hash === rehearsalHash ? clips : undefined,
-          });
-      })
-      .catch(() => {
-        if (active) setClipMetadata({ url: rehearsalUrl, hash: rehearsalHash });
-      });
-    return () => {
-      active = false;
-    };
-  }, [rehearsalUrl, rehearsalHash]);
   useEffect(() => {
     setCompare("");
     setPendingPin(undefined);
@@ -309,10 +224,13 @@ function App() {
       workPrompt(repo, dataRoot ?? "", p, asset?.id, revision, action),
     );
   }
-  async function copyText(prompt: string) {
+  async function copyText(
+    prompt: string,
+    confirmation = "Prompt copied. Paste into Codex and send. Direction is optional.",
+  ) {
     try {
       await navigator.clipboard.writeText(prompt);
-      setCopied(prompt);
+      setCopied(confirmation);
       setTimeout(() => setCopied(""), 2000);
     } catch {
       setError("Clipboard unavailable. Allow clipboard access and retry.");
@@ -375,179 +293,7 @@ function App() {
   const feedback =
     p?.feedback.filter((f) => f.revisionId === revision?.id) ?? [];
   const actions: { label: string; run: () => void; disabled?: boolean }[] = [];
-  let linkMessage =
-    observed?.error ??
-    (observed?.result?.status !== "ready"
-      ? observed?.result?.message
-      : undefined);
-  let offerLinkedRevision = false;
-  const linkedSource = context?.candidate?.model ?? context?.requirement.source;
-  if (p && revision && link && context && linkedSource) {
-    const sourceRevision = revisions.find(
-      (r) => r.id === linkedSource.revisionId,
-    );
-    let cursor = revision;
-    const walked = new Set<string>();
-    while (
-      cursor.parentId &&
-      cursor.id !== linkedSource.revisionId &&
-      !walked.has(cursor.id)
-    ) {
-      walked.add(cursor.id);
-      const parent = revisions.find((r) => r.id === cursor.parentId);
-      if (!parent) break;
-      cursor = parent;
-    }
-    const isIntermediate =
-      !context.candidate &&
-      sourceRevision?.stage !== "model" &&
-      revision.stage !== "model" &&
-      cursor.id === linkedSource.revisionId;
-    const copyLinked = async (prompt: string) => {
-      try {
-        const current = await get(linkUrl);
-        if (
-          currentLookupKey.current !== lookupKey ||
-          liveDraft.current.revisionId !== revision.id ||
-          selectedProject.current !== p.id
-        )
-          return;
-        if (JSON.stringify(current) !== JSON.stringify(context)) {
-          setLinked({ key: lookupKey, result: current });
-          setError(
-            "Rehearsal context changed. Check the updated action before copying.",
-          );
-          return;
-        }
-        await copyText(prompt);
-      } catch (error) {
-        if (currentLookupKey.current !== lookupKey) return;
-        setLinked({ key: lookupKey, error: (error as Error).message });
-      }
-    };
-    if (revision.id !== linkedSource.revisionId && !isIntermediate) {
-      offerLinkedRevision = true;
-      linkMessage = `The active rehearsal handoff targets ${linkedSource.revisionId}.`;
-      const intermediateParent =
-        !context.candidate &&
-        sourceRevision?.stage !== "model" &&
-        cursor.id === linkedSource.revisionId &&
-        revisions.find((r) => r.id === revision.parentId)?.stage === "study";
-      if (
-        revision.stage === "model" &&
-        (revision.parentId === linkedSource.revisionId || intermediateParent)
-      ) {
-        actions.push({
-          label: "Copy candidate writeback prompt",
-          run: () =>
-            copyLinked(
-              workPrompt(
-                repo,
-                dataRoot!,
-                p,
-                assetId,
-                revision,
-                linkedRehearsalAction(context, "recover", revision),
-              ),
-            ),
-        });
-      }
-    } else {
-      const approved = isApproved(p, revision);
-      const hasFindings =
-        feedback.some((f) => !f.resolved) ||
-        context.acceptance?.verdict === "needs-revision" ||
-        context.fit?.verdict === "model-defect";
-      const wrap = (
-        purpose: Parameters<typeof linkedRehearsalAction>[1],
-        action: string,
-      ) =>
-        copyLinked(
-          workPrompt(
-            repo,
-            dataRoot!,
-            p,
-            assetId,
-            revision,
-            `${linkedRehearsalAction(context, purpose)}\n\n${action}`,
-          ),
-        );
-      const kind =
-        revision.stage === "model" ? "developed model" : "3D prototype";
-      if (revision.stage === "model" && (hasFindings || !context.candidate))
-        actions.push({
-          label: hasFindings
-            ? "Copy developed model correction prompt"
-            : "Copy developed model revision prompt",
-          run: () => wrap("develop", correctionAction(p, revision)),
-        });
-      if (
-        revision.stage === "model" &&
-        approved &&
-        context.candidate &&
-        context.acceptance?.verdict !== "needs-revision" &&
-        context.fit?.verdict !== "model-defect" &&
-        modelFile
-      )
-        actions.push({
-          label: "Copy rehearsal fit-check prompt",
-          disabled: !rehearsalClips,
-          run: () =>
-            wrap(
-              "fit",
-              linkedFitIdentity(p, revision, modelFile.hash, rehearsalClips!),
-            ),
-        });
-      if (revision.stage !== "sketch")
-        actions.push({
-          label: `Copy ${kind} review prompt`,
-          run: () =>
-            copyLinked(
-              candidateReviewPrompt(
-                repo,
-                dataRoot!,
-                p,
-                revision,
-                linkedRehearsalAction(context, "review"),
-              ),
-            ),
-        });
-      if (revision.stage === "study" && hasFindings)
-        actions.unshift({
-          label: "Copy 3D prototype correction prompt",
-          run: () => wrap("concept", correctionAction(p, revision)),
-        });
-      if (canAdvance && approved)
-        actions.unshift({
-          label:
-            revision.stage === "sketch"
-              ? "Copy 3D prototype prompt"
-              : "Copy developed model prompt",
-          run: () =>
-            wrap(
-              revision.stage === "sketch" ? "concept" : "develop",
-              revisionAction(p, revision, true),
-            ),
-        });
-      if (revision.stage === "sketch" || revision.stage === "study")
-        actions.push({
-          label:
-            revision.stage === "sketch"
-              ? "Copy concept revision prompt"
-              : "Copy revision prompt",
-          run: () => wrap("concept", revisionAction(p, revision)),
-        });
-      if (concept && revision.id === concept.id)
-        actions.push({
-          label: "Copy detailed 2D concept prompt",
-          run: () => wrap("concept", detailedConceptAction(p, concept)),
-        });
-      if (context.staleFit)
-        linkMessage =
-          "The rehearsal head changed. Run a new fit check before relying on the earlier result.";
-    }
-  }
-  if (p && revision && !link) {
+  if (p && revision) {
     const approved = isApproved(p, revision);
     const revise = {
       label:
@@ -582,28 +328,13 @@ function App() {
         });
       actions.push(revise);
     }
-    if (rehearsalUrl && modelFile)
-      actions.push({
-        label: "Copy Scene Rehearsal prompt",
-        disabled: !rehearsalClips,
-        run: () =>
-          copyText(
-            rehearsalPrompt(
-              repo,
-              dataRoot!,
-              p,
-              revision,
-              modelFile.hash,
-              rehearsalClips!,
-            ),
-          ),
-      });
     if (concept && revision.id === concept.id)
       actions.push({
         label: "Copy detailed 2D concept prompt",
         run: () => copy(detailedConceptAction(p, concept)),
       });
   }
+  const handoff = p && dataRoot && acceptedAssetHandoff(repo, dataRoot, p);
   return (
     <MotionConfig reducedMotion="user" transition={{ duration: 0.32, ease }}>
       <div className="studio">
@@ -654,6 +385,18 @@ function App() {
                     ),
                   ),
               },
+              ...(handoff && p?.id === projectId
+                ? [
+                    {
+                      label: "Copy Scene Loom sync handoff",
+                      run: () =>
+                        copyText(
+                          handoff,
+                          "Handoff copied. Paste into your Scene Loom Codex chat.",
+                        ),
+                    },
+                  ]
+                : []),
             ]}
           />
         </header>
@@ -801,54 +544,11 @@ function App() {
                                 ...action,
                                 disabled: busy || !dataRoot || action.disabled,
                               }))}
-                              note={
-                                rehearsalUrl && dataRoot === ""
-                                  ? "Could not locate the source library. Reload to retry."
-                                  : currentClipMetadata && !rehearsalClips
-                                    ? "Could not read embedded clip names. Reload to retry."
-                                    : undefined
-                              }
                             />
                           )}
                         </div>
                       )
                     )}
-                  </div>
-                )}
-                {link && stage !== "all" && (
-                  <div className="rehearsal-context">
-                    <p role="status">
-                      {linkMessage ??
-                        (context
-                          ? `Rehearsal requirement ${context.requirement.name} · measured in ${context.measuredIn.revisionId}`
-                          : "Loading rehearsal context…")}
-                    </p>
-                    {linkedSource &&
-                      revision?.id !== linkedSource.revisionId &&
-                      (!revision || offerLinkedRevision) &&
-                      revisions.some(
-                        (r) => r.id === linkedSource.revisionId,
-                      ) && (
-                        <button
-                          onClick={() => {
-                            const source = revisions.find(
-                              (r) => r.id === linkedSource.revisionId,
-                            )!;
-                            setRevisionId(source.id);
-                            setStage(source.stage);
-                          }}
-                        >
-                          Open linked revision
-                        </button>
-                      )}
-                    {currentClipMetadata && !rehearsalClips && (
-                      <p>
-                        Could not read embedded model clips. Reload to retry.
-                      </p>
-                    )}
-                    <button onClick={() => refreshRehearsal((n) => n + 1)}>
-                      Refresh rehearsal context
-                    </button>
                   </div>
                 )}
                 <AnimatePresence initial={false}>
@@ -1359,8 +1059,8 @@ function App() {
                 ))}
               <p className="muted">
                 When you settle a lasting project or asset choice, ask Codex to
-                save it as a design decision. Keep defects in review findings
-                and scene measurements in the linked fit requirements.
+                save it as a design decision. Record asset defects in review
+                findings.
               </p>
             </Disclosure>
           </aside>
@@ -1375,7 +1075,7 @@ function App() {
               exit={{ opacity: 0, y: 8, filter: "blur(3px)" }}
               transition={{ duration: 0.22 }}
             >
-              Prompt copied. Paste into Codex and send. Direction is optional.
+              {copied}
             </motion.div>
           )}
         </AnimatePresence>

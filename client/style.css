@@ -1565,15 +1565,3 @@ textarea:focus {
 .revision-actions .revision-next:hover:not(:disabled) {
   background: var(--control-hover);
 }
-.rehearsal-context {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-block: 0 16px;
-}
-.rehearsal-context p {
-  margin: 0;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}

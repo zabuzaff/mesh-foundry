@@ -175,138 +175,53 @@ export async function checkLinkedRehearsal(
       expectedVersion: (await service.store.read(model.libraryId)).version,
       operations: [{ type: "rehearsal.link", assetId: model.assetId, link }],
     });
-    const selects = (revision: string) =>
-      page
-        .locator(".revision-trail button")
-        .filter({ has: page.getByText(revision, { exact: true }) })
-        .click();
-    const action = (name: string) =>
-      page.getByRole("button", { name, exact: true });
-    await selects("model-r1");
-    await expect(page.locator(".rehearsal-context")).toContainText(
-      "Crate clearance",
-    );
-    const fit = page.getByRole("menuitem", {
-      name: "Copy rehearsal fit-check prompt",
-      exact: true,
-    });
-    await action("More actions").click();
-    await fit.click();
-    const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
-    await expect.poll(clipboard).toContain("import-model");
-    assert.match(await clipboard(), /"revision":"model-r1"/);
+    const endpoint = `/api/projects/${model.libraryId}/assets/${model.assetId}/rehearsal`;
+    const readLegacy = () => fetch(new URL(endpoint, page.url()));
+    const legacy = await readLegacy();
+    assert.equal(legacy.status, 200);
+    const linked = await legacy.json();
+    assert.equal(linked.status, "ready");
+    assert.deepEqual(linked.candidate.model, model);
 
-    await record("candidate", {
-      kind: "candidate-review",
-      eventId: "candidate-rejected",
-      requirementId,
-      model,
-      verdict: "needs-revision",
-      evidence: ["Housing measures 1.28 m; reduce to 1.20 m."],
-    });
-    const correction = action("Copy developed model correction prompt");
-    // The old screen may still be visible. The first click must refuse to copy its stale record.
-    const before = await clipboard();
-    await correction.click();
-    await expect(page.getByRole("alert")).toContainText(
-      "Rehearsal context changed",
-    );
-    assert.equal(await clipboard(), before);
-    await correction.click();
-    await expect.poll(clipboard).toContain("Housing measures 1.28 m");
-    const copied = await clipboard();
-    for (const token of [
-      "Opening width",
-      '"value":1.2',
-      "proxy-crate",
-      "Keep the handle",
-      "fixture-rehearsal",
-      "candidate-rejected",
-      "parentId model-r1",
-      "Remove the visible seam",
-      "STALE_REHEARSAL",
-    ])
-      assert(copied.includes(token), token);
-    await page.getByRole("button", { name: "Dismiss", exact: true }).click();
-    const lookup = "**/api/projects/empty-studio/assets/crate/rehearsal";
-    await page.route(
-      lookup,
-      async (route) => {
-        await service.store.apply(model.libraryId, {
-          requestId: "resolve-during-copy",
-          expectedVersion: (await service.store.read(model.libraryId)).version,
-          operations: [{ type: "feedback.resolve", id: "model-fit" }],
-        });
-        await route.continue();
-      },
-      { times: 1 },
-    );
-    const responseDuringCopy = page.waitForResponse((response) =>
-      response.url().endsWith("/assets/crate/rehearsal"),
-    );
-    await correction.click();
-    await responseDuringCopy;
+    await page.reload();
+    await page
+      .locator(".revision-trail button")
+      .filter({ has: page.getByText(model.revisionId, { exact: true }) })
+      .click();
+    await page
+      .getByRole("button", { name: "More actions", exact: true })
+      .click();
     await expect(
-      page.getByText("Review finding · Resolved", { exact: true }),
-    ).toBeVisible();
-    assert.equal(await clipboard(), copied);
-    await expect(correction).toBeEnabled();
-    await correction.click();
-    await expect.poll(clipboard).not.toContain("Remove the visible seam");
-    const alert = page.getByRole("alert");
-    if (await alert.isVisible()) await action("Dismiss").click();
-
-    const recoveryId = "model-writeback-pending";
-    await service.store.apply(model.libraryId, {
-      requestId: "simulate-published-without-writeback",
-      expectedVersion: (await service.store.read(model.libraryId)).version,
-      operations: [
-        {
-          type: "revision.publish",
-          id: recoveryId,
-          assetId: model.assetId,
-          parentId: model.revisionId,
-          stage: "model",
-          summary: "Fixture successor for crate-clearance",
-          files: [
-            {
-              kind: "model",
-              path: resolve("artifacts/authoring-proof/human.glb"),
-            },
-            {
-              kind: "blend",
-              path: resolve("artifacts/authoring-proof/human.blend"),
-            },
-          ],
-          toolVersions: {},
-          fixture: true,
-        },
-      ],
-    });
-    await selects(recoveryId);
-    await action("Copy candidate writeback prompt").click();
+      page.getByRole("menuitem", { name: /rehearsal|writeback/i }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("menuitem", {
+        name: "Copy developed model review prompt",
+        exact: true,
+      })
+      .click();
+    const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
     await expect
       .poll(clipboard)
-      .toContain(
-        "Reconcile already-published Foundry revision model-writeback-pending with parent model-r1",
-      );
-    assert.match(
+      .toContain("Independently review this Mesh Foundry developed model");
+    assert.doesNotMatch(
       await clipboard(),
-      /Do not publish, change or accept a Foundry revision/,
+      /candidate-review|rehearsal.record|Crate clearance/,
     );
-    await action("Open linked revision").click();
-    await page.screenshot({ path: "artifacts/studio-linked-desktop.png" });
-    await page.setViewportSize({ width: 390, height: 844 });
+    const before = await service.store.read(model.libraryId);
+    await page
+      .getByRole("button", { name: "Project actions", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", {
+        name: "Copy Scene Loom sync handoff",
+        exact: true,
+      })
+      .click();
     await expect
-      .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
-      .toBeLessThanOrEqual(390);
-    await page.screenshot({ path: "artifacts/studio-linked-narrow.png" });
-    await selects("prototype-r1");
-    await expect(page.locator(".rehearsal-context")).toContainText(
-      "targets model-r1",
-    );
-    await action("Open linked revision").click();
-    await expect(page.locator(".revision-actions")).toContainText("model-r1");
+      .poll(clipboard)
+      .toContain("Sync accepted assets in Scene Loom");
+    assert.deepEqual(await service.store.read(model.libraryId), before);
     await batch([
       {
         type: "scene.patch",
@@ -314,11 +229,12 @@ export async function checkLinkedRehearsal(
         changes: { description: "Inputs changed" },
       },
     ]);
-    await action("Refresh rehearsal context").click();
-    await expect(page.locator(".rehearsal-context")).toContainText(
-      "complete its rehearsal review and draft",
+    const changed = await readLegacy();
+    assert.equal(changed.status, 200);
+    assert.match(
+      (await changed.json()).message,
+      /complete its rehearsal review and draft/,
     );
-    await expect(correction).toHaveCount(0);
   } finally {
     child.kill("SIGTERM");
     await closed;

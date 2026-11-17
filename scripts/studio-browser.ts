@@ -412,7 +412,11 @@ try {
   page.on("request", (req) => {
     if (req.method() !== "GET") writes++;
   });
-  const checkCopy = async (label: string, expected: string[]) => {
+  const checkCopy = async (
+    label: string,
+    expected: string[],
+    menu = "More actions",
+  ) => {
     const before = await service.store.read("empty-studio"),
       beforeWrites = writes;
     const button = page.getByRole("button", { name: label, exact: true });
@@ -423,9 +427,7 @@ try {
       await button.click();
     } else {
       if (!(await item.isVisible())) {
-        await page
-          .getByRole("button", { name: "More actions", exact: true })
-          .click();
+        await page.getByRole("button", { name: menu, exact: true }).click();
       }
       await item.click();
       await expect(page.getByRole("menu")).toHaveCount(0);
@@ -690,6 +692,20 @@ try {
       },
     ],
   });
+  const model = (await service.store.read("empty-studio")).revisions.find(
+    (r) => r.id === "model-r1",
+  )!;
+  const modelFile = model.files.find((file) => file.kind === "model")!;
+  const clipResponse = await fetch(
+    `${url}/api/projects/empty-studio/revisions/model-r1/files/${modelFile.id}/clips`,
+  );
+  assert.equal(clipResponse.status, 200);
+  assert.deepEqual(await clipResponse.json(), {
+    hash: createHash("sha256").update(glb).digest("hex"),
+    clips: embedded.animations.map(
+      (animation: { name?: string }) => animation.name ?? null,
+    ),
+  });
   await page
     .locator(".revision-trail button")
     .filter({ has: page.getByText("model-r1", { exact: true }) })
@@ -728,80 +744,65 @@ try {
     .filter({ has: page.getByText("concept-r1", { exact: true }) })
     .click();
   await expect(prototypeCopy).toBeEnabled();
-  const rehearsalLabel = "Copy Scene Rehearsal prompt";
-  const rehearsalCopy = page.getByRole("menuitem", {
-    name: rehearsalLabel,
-    exact: true,
-  });
   const selectRevision = (id: string) =>
     page
       .locator(".revision-trail button")
       .filter({ has: page.getByText(id, { exact: true }) })
       .click();
   await selectRevision("model-r1");
-  await expect(rehearsalCopy).toHaveCount(0);
+  const syncLabel = "Copy Scene Loom sync handoff";
+  const syncCopy = page.getByRole("menuitem", { name: syncLabel, exact: true });
+  await projectActions.click();
+  const readManifest = async () => {
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+    return JSON.parse(clipboard.slice(clipboard.indexOf("\n{") + 1));
+  };
+  const payload = [
+    "Sync accepted assets in Scene Loom",
+    "Paste this handoff into the Codex chat",
+    "Scene Loom CLI project read and scene read",
+    "Keep that fallback read-only in both apps.",
+    "Keep a valid prototype pin even when a developed model also has approval.",
+    "ask which source to pin",
+    "read empty-studio",
+    JSON.stringify(root),
+  ];
+  await checkCopy(syncLabel, payload, "Project actions");
+  assert.equal(
+    (await readManifest()).assets.find(
+      ({ assetId }: { assetId: string }) => assetId === "crate",
+    ).acceptedDevelopedModel,
+    null,
+  );
   await page
     .getByRole("button", { name: "Accept this revision", exact: true })
     .click();
+  await expect
+    .poll(async () => (await service.store.read("empty-studio")).accepted.crate)
+    .toBe("model-r1");
   await page
     .getByRole("button", { name: "Developed Models", exact: true })
     .click();
-  let releaseSession!: () => void;
-  const sessionGate = new Promise<void>((resolve) => {
-    releaseSession = resolve;
-  });
-  await page.route("**/api/session", async (route) => {
-    await sessionGate;
-    await route.continue();
-  });
-  const clipsLoaded = page.waitForResponse(
-    (response) => response.url().endsWith("/clips") && response.ok(),
+  await selectRevision("model-r1");
+  await checkCopy(syncLabel, payload, "Project actions");
+  await expect(
+    page.getByText("Handoff copied. Paste into your Scene Loom Codex chat."),
+  ).toBeVisible();
+  const manifest = await readManifest();
+  assert.equal(manifest.libraryId, "empty-studio");
+  assert.deepEqual(
+    manifest.assets.find(
+      ({ assetId }: { assetId: string }) => assetId === "crate",
+    ).acceptedDevelopedModel,
+    {
+      revisionId: "model-r1",
+      hash: createHash("sha256").update(glb).digest("hex"),
+    },
   );
-  await page.reload();
-  await clipsLoaded;
-  await page
-    .getByRole("button", { name: "Open in Developed Models", exact: true })
-    .click();
-  await page.getByRole("button", { name: "More actions", exact: true }).click();
-  await expect(rehearsalCopy).toBeDisabled();
-  releaseSession();
-  await expect(rehearsalCopy).toBeEnabled();
-  await page.unroute("**/api/session");
-  const identity = JSON.stringify({
-    project: "empty-studio",
-    asset: "crate",
-    revision: "model-r1",
-    hash: createHash("sha256").update(glb).digest("hex"),
-    clips: embedded.animations.map(
-      (clip: { name?: string }) => clip.name ?? null,
-    ),
-  });
-  const payload = [
-    identity,
-    "A null or empty clip name identifies an unnamed animation",
-    JSON.stringify(root),
-    "read empty-studio",
-    "export empty-studio",
-    "Immediately before importing, reread the live Mesh Foundry acceptance record",
-    "If a supported agent import workflow is still missing, report the blocker",
-    "Ask the owner if the target rehearsal or any slot mapping is unclear",
-    "Final approval and export are owner actions",
-  ];
-  const externalRequests: string[] = [];
-  page.on("request", (request) => {
-    if (!request.url().startsWith(url + "/"))
-      externalRequests.push(request.url());
-  });
-  await checkCopy(rehearsalLabel, payload);
-  assert.deepEqual(externalRequests, []);
-  await page.getByRole("button", { name: "More actions", exact: true }).click();
-  await rehearsalCopy.screenshot({
-    path: "artifacts/studio-rehearsal-action.png",
-  });
-  await page.screenshot({
-    path: "artifacts/studio-rehearsal-narrow.png",
-    fullPage: true,
-  });
+  await projectActions.click();
+  await expect(syncCopy).toBeVisible();
+  await page.screenshot({ path: "artifacts/studio-loom-sync-narrow.png" });
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "All work", exact: true }).click();
   await selectRevision("prototype-r2");
@@ -815,7 +816,15 @@ try {
     .getByRole("button", { name: "Developed Models", exact: true })
     .click();
   await selectRevision("model-r1");
-  await checkCopy(rehearsalLabel, payload);
+  await checkCopy(syncLabel, payload, "Project actions");
+  assert.deepEqual(
+    (await readManifest()).assets.find(
+      ({ assetId }: { assetId: string }) => assetId === "crate",
+    ).acceptedDevelopedModel,
+    manifest.assets.find(
+      ({ assetId }: { assetId: string }) => assetId === "crate",
+    ).acceptedDevelopedModel,
+  );
   const imageNames = [
     "front",
     "front-right",
