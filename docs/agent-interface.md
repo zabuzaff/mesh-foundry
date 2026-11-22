@@ -454,29 +454,80 @@ vertical seat gap, and each sole's proximity to and coverage on the support.
 These checks measure geometry at one pose. Inspect the side and three-quarter
 images for the rest of the chair and for visual balance.
 
-## Scene Loom sync handoff and legacy rehearsal links
+## Asset spec
 
-Register the exact Scene Loom target and requirement on an existing Foundry asset
-with an ordinary version checked CLI batch:
+Scene Rehearsal no longer imports Foundry assets or fits them. It only locks
+placement placeholders and produces a per-asset spec, which Foundry builds to.
+Record that spec on an existing asset with an ordinary version checked batch.
+Names and units follow Rehearsal's `scene-rehearsal-asset-spec` pieces (metres,
+Y up, Euler XYZ radians):
 
 ```json
 {
-  "type": "rehearsal.link",
-  "assetId": "sign",
-  "link": {
-    "projectId": "office",
-    "storyboardId": "storyboard_office",
-    "sceneId": "lobby",
-    "requirementId": "sign_fit"
+  "type": "asset.spec",
+  "assetId": "desk",
+  "spec": {
+    "version": 1,
+    "dimensions": [1.4, 0.75, 0.7],
+    "pivot": { "anchor": "base-center", "position": [0, 0, -2] },
+    "interactive": true,
+    "animationClips": ["drawer-open"],
+    "clearance": [
+      {
+        "id": "main/walk/1",
+        "label": "Keep clear: walk route",
+        "kind": "route",
+        "center": [0, 0.9, 1.5],
+        "size": [6, 1.8, 1],
+        "rotationEuler": [0, 1.570796, 0],
+        "cue": { "scenario": "main", "event": "walk" },
+        "intersectsPlaceholder": false
+      }
+    ],
+    "placementNotes": ["Against the north wall"],
+    "scaleReference": { "asset": "human", "label": "Baseline", "height": 1.75 },
+    "source": {
+      "draftId": "<64 hex>",
+      "storyboardId": "yard",
+      "sceneId": "gate",
+      "contentDigest": "<64 hex>"
+    }
   }
 }
 ```
 
-An asset may also supply `rehearsal` when created. Set the link to null to
-unlink it. Use the Scene Loom lookup or an owner confirmed legacy library
-mapping. A storyboard asset suggestion pin identifies a different workflow
-and does not establish a rehearsal link. If a requirement is retired or
-superseded, verify the new requirement and update the link explicitly.
+`spec` is null to clear it. `version` must be 1. `dimensions` is
+`[width, height, depth]` in metres; `pivot.anchor` is `base-center` or `center`
+and `pivot.position` is where the asset origin goes. `clearance[].kind` is
+`authored` or `route`; `center`/`size`/`rotationEuler` are world space and
+`cue` is present for routes. `scaleReference` may be null; when set,
+`scaleReference.asset` must be an asset in the same project (checked when the
+spec is set; a spec supplied inside `asset.create` is validated for shape
+only). `source` is optional; store it so a later Rehearsal export's
+`contentDigest` can be compared to see whether the asset was built to a stale
+spec. Specs are optional and replacing one overwrites the previous value;
+earlier values remain in project backups.
+
+**From a whole Rehearsal export.** Instead of `spec`, pass
+`fromRehearsalExport: { "export": <the full spec JSON>, "pieceId": "gate" }`
+(exactly one of `spec` or `fromRehearsalExport`). `apply` rejects the batch if
+`format` is not `scene-rehearsal-asset-spec`, `version` is not 1, `pieceId` is
+not in `pieces`, or the mapped result is invalid. Mapping: piece `dimensions`,
+`pivot`, `interactive`, `animationClips`, `clearance` and `placementNotes`
+copy as is; export `scaleReference` copies as is (null stays null); `source`
+keeps only `draftId`, `storyboardId`, `sceneId`, `contentDigest`. The piece's
+`id`, `name`, `kind`, `includes`, `position`, `rotationEuler` and `cues`, and
+the export's `units`, `warnings`, `draftRev`, approval fields and `specDigest`
+are not stored. The stored spec is the mapped result, not the export.
+
+When a spec exists, **Copy 3D prototype prompt** and the 3D prototype/developed
+model reviewer prompt include it. The builder models to its dimensions,
+clearances, pivot, notes, interaction and clips. The reviewer must verify real-world
+scale against the named scale-reference asset and report mismatches as
+findings. Without a spec the prompts tell the agent to ask the owner for
+dimensions and a scale reference rather than invent them.
+
+## Scene Loom sync handoff
 
 **Project actions → Copy Scene Loom sync handoff** copies an inventory of
 owner-approved 3D prototypes and developed models, with exact revision IDs,
@@ -489,9 +540,4 @@ is unavailable, use the Loom CLI project and scene reads and return the
 verified manifest and gaps in chat without editing either app. Concept, development,
 review and correction prompts stay in Foundry's independent asset workflow.
 
-The legacy rehearsal link operation and read endpoint remain available to
-existing callers. The read endpoint uses the configured `SCENE_LOOM_CLI_DIR`
-and `SCENE_LOOM_DATA_DIR`. The studio copy actions do not depend on that
-endpoint. Run the linked browser fixture with
-`SCENE_LOOM_TEST_CHECKOUT=/absolute/scene-loom npm run test:browser` after
-building. It uses an isolated Scene Loom service.
+The retired `rehearsal.link` operation and `rehearsal` asset field no longer exist. A stored `rehearsal` field on an asset is dropped when the project is read and is gone after the next save. A storyboard asset suggestion pin is a different workflow.

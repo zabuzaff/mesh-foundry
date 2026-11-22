@@ -1,4 +1,3 @@
-import { checkLinkedRehearsal } from "./rehearsal-browser-fixture.js";
 import type { Project } from "../shared/schema.js";
 import sharp from "sharp";
 import { legacyFixture } from "./legacy-fixture.js";
@@ -933,13 +932,6 @@ try {
     "parentId concept-r1, stage sketch",
   ]);
   assert.equal((await service.store.read("empty-studio")).revisions.length, 5);
-  if (process.env.SCENE_LOOM_TEST_CHECKOUT)
-    await checkLinkedRehearsal(
-      process.env.SCENE_LOOM_TEST_CHECKOUT,
-      root,
-      service,
-      page,
-    );
   assert.deepEqual(errors, []);
   assert.deepEqual(failed, []);
   await writeFile(

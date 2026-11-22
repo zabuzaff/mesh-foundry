@@ -500,6 +500,28 @@ prototype and its linked concept. The reviewer inspects the exported GLB
 and returns numbered annotated captures for visible findings, plus a
 correction prompt when warranted. The owner decides what to send back.
 
+## Kairo Scene 1 office shell fit — 2026-11-15
+
+Published unapproved model candidate `kairo-office-shell-scene1-fit-model-1`
+at library version 98, parented to the still-approved
+`kairo-office-shell-cozy-study-1`. Fit reference: Scene Rehearsal quiet
+revision `5c3d7ec43862858f5ed32117241564460d96b15d330cbcce655eda59d727e366`.
+Reopened the editable Blender source and checked the reimported GLB: a
+continuous 11.60 × 8.40 m slab and 0.95 × 1.80 m landing at floor zero,
+with a clear 1.80 × 2.30 m portal including trim and glass checks.
+Export: 83,560 triangles, 18 materials, one embedded 1024 × 1024 texture,
+5,410,140 bytes. Collision and final runtime budgets await assembled
+desk and prop validation. No downstream project was modified.
+
+Published the SS1–SS4 correction as unapproved model candidate
+`kairo-office-shell-scene1-fit-model-2` at library version 99, linked
+directly to the same approved study. Reimport confirmed the specified
+portal position and clear approach volume. Closed window and pillar
+joins, separated overlapping eave surfaces, removed the compressed
+corner parapet and reused slate on the slab sides. Published eight
+GLB verification views and the measurements. The corrected GLB has
+82,048 triangles, 18 materials and one 1024 × 1024 embedded texture.
+
 ## Standalone copy prompts — 2026-11-16
 
 All work opens the selected revision in its stage. Each stage puts one primary
@@ -575,3 +597,25 @@ feedback, revision or scene records were changed.
 Verified the build, 23 unit tests, the Chrome clipboard suite with an isolated
 Loom service, legacy rehearsal and clip reads, and read-only copying against
 live Kairo.
+
+## Rehearsal fit loop retired; asset spec intake — 2026-11-22
+
+Per the owner's 2026-11-17 decision, Scene Rehearsal only locks placeholder
+placement and issues per-asset specs. Removed the rehearsal read endpoint,
+the Scene Loom rehearsal lookup (`rehearsalContext`), `shared/rehearsal.ts`
+and the linked browser fixture. Kept the deprecated `rehearsal.link` operation
+and `rehearsal` asset field so stored projects still load, plus all historical
+revisions (including `*-scene1-fit-model-N`), the accepted-asset sync handoff
+and reference handoff features. Added the versioned optional asset `spec`
+(`asset.spec` operation, documented in docs/agent-interface.md). The 3D
+prototype prompt and reviewer prompt include it and require scale
+verification against the scale-reference asset; without one they tell the
+agent to ask rather than invent dimensions.
+
+## Retired rehearsal.link and asset.rehearsal — 2026-11-22
+
+Removed the `rehearsal.link` operation, the `rehearsalLink` schema and the `rehearsal` asset field. Projects that still carry the field load normally: it is dropped on read and disappears at the next save. Library data was not edited.
+
+## Asset spec aligned with Rehearsal export — 2026-11-22
+
+`asset.spec` now uses Rehearsal's names and units (`dimensions` [w,h,d], `pivot {anchor, position}`, `clearance[]`, `placementNotes[]`, `scaleReference {asset, label?, height?}`, optional `source`) and accepts `fromRehearsalExport {export, pieceId}`. Version stays 1: the previous shape (`dimensionsMetres`, `clearances`, `anchor`) was never populated, but any project that did store it would now fail to load; none known. Prompts, tests and docs updated.

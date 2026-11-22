@@ -55,50 +55,6 @@ export async function makeApp(
     )
       return reply.code(401).send({ error: "Review authentication required" });
   });
-  app.get("/api/projects/:id/assets/:assetId/rehearsal", async (req) => {
-    const params = req.params as { id: string; assetId: string };
-    const p = await store.read(id.parse(params.id));
-    const asset = p.assets.find((a) => a.id === id.parse(params.assetId));
-    if (!asset?.rehearsal) throw Error("No rehearsal link for this asset");
-    const context = await references.rehearsalContext(
-      asset.rehearsal,
-      p.id,
-      asset.id,
-    );
-    if ((await store.read(p.id)).version !== p.version)
-      return {
-        status: "stale",
-        message:
-          "Foundry changed during lookup. Refresh the rehearsal context.",
-      };
-    if (context.status !== "ready") return context;
-    const source = p.revisions.find(
-      (r) =>
-        r.id === context.requirement.source.revisionId &&
-        r.assetId === asset.id,
-    );
-    const candidate = context.candidate;
-    if (
-      !source ||
-      (candidate &&
-        !p.revisions.some(
-          (r) =>
-            r.id === candidate.model.revisionId &&
-            r.assetId === asset.id &&
-            r.stage === "model",
-        ))
-    )
-      return {
-        status: "missing",
-        message:
-          "The exact linked source or developed candidate is unavailable. Reconcile the Foundry library with Scene Loom.",
-      };
-    return {
-      ...context,
-      foundryVersion: p.version,
-      sceneLoom: references.connection(),
-    };
-  });
   app.get("/api/session", async () => ({ token: ownerToken, dataRoot: root }));
   app.get("/api/projects", async () => store.list());
   app.get("/agent/projects", async () => store.list());

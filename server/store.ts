@@ -23,6 +23,7 @@ import {
   type Project,
   revision,
   sceneLoomTarget,
+  specFromRehearsalExport,
 } from "../shared/schema.js";
 import { inspect, hash, inspectBytes } from "./files.js";
 import { checkPublication } from "../shared/progression.js";
@@ -82,9 +83,13 @@ export class Store {
     return join(this.root, "projects", id.parse(pid));
   }
   async read(pid: string) {
-    const p = project.parse(
-      JSON.parse(await readFile(join(this.path(pid), "project.json"), "utf8")),
+    const raw = JSON.parse(
+      await readFile(join(this.path(pid), "project.json"), "utf8"),
     );
+    // Retired: assets once carried a Scene Rehearsal fit link. Drop it on read.
+    for (const a of raw?.assets ?? [])
+      if (a && typeof a === "object") delete a.rehearsal;
+    const p = project.parse(raw);
     this.validate(p);
     if (p.id !== pid) throw Error("Project identity mismatch");
     return p;
@@ -307,6 +312,15 @@ export class Store {
         throw new Conflict(
           "Project changed; read current state and retry with a new request ID",
         );
+      if (
+        "operations" in data &&
+        data.operations.some((op) => op.type === "scene-loom.unpin") &&
+        (data.sceneLoom ||
+          data.operations.some((op) => op.type !== "scene-loom.unpin"))
+      )
+        throw Error(
+          "Scene Loom unpin must be its own batch without a generation target",
+        );
       const generation = "operations" in data ? data.sceneLoom : undefined;
       const pins =
         "operations" in data
@@ -411,11 +425,30 @@ export class Store {
           if (op.type === "category.create")
             p.categories.push({ id: op.id, name: op.name });
           if (op.type === "asset.create") p.assets.push(op.asset);
-          if (op.type === "rehearsal.link") {
+          if (op.type === "asset.spec") {
             const asset = p.assets.find((entry) => entry.id === op.assetId);
-            if (!asset) throw Error("Rehearsal link asset not found");
-            if (op.link) asset.rehearsal = op.link;
-            else delete asset.rehearsal;
+            if (!asset) throw Error("Asset spec asset not found");
+            const spec = op.fromRehearsalExport
+              ? specFromRehearsalExport(op.fromRehearsalExport)
+              : op.spec;
+            if (spec) {
+              if (
+                spec.scaleReference &&
+                !p.assets.some((a) => a.id === spec.scaleReference!.asset)
+              )
+                throw Error("Scale reference asset not found in this project");
+              asset.spec = spec;
+            } else delete asset.spec;
+          }
+          if (op.type === "scene-loom.unpin") {
+            const before = p.sceneLoomPins?.length ?? 0;
+            p.sceneLoomPins = (p.sceneLoomPins ?? []).filter(
+              (pin) =>
+                pin.storyboardId !== op.storyboardId ||
+                pin.suggestionId !== op.suggestionId,
+            );
+            if (p.sceneLoomPins.length === before)
+              throw Error("Scene Loom pin not found");
           }
           if (op.type === "task.set") p.currentTask = op.text;
           if (op.type === "decision.add")

@@ -45,19 +45,119 @@ export const revision = z
     fixture: z.boolean(),
   })
   .strict();
-export const rehearsalLink = z.strictObject({
-  projectId: id,
-  storyboardId: id,
-  sceneId: id,
-  requirementId: id,
-});
+const metres = z.number().finite().positive().max(10000);
+const label = z.string().min(1).max(160);
+const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
+const dims3 = z.tuple([metres, metres, metres]);
+// Optional per-asset spec. Field names and units match Scene Rehearsal's
+// scene-rehearsal-asset-spec pieces (metres, Y up, Euler XYZ radians).
+export const assetSpec = z
+  .object({
+    version: z.literal(1),
+    dimensions: dims3,
+    pivot: z
+      .object({ anchor: z.enum(["base-center", "center"]), position: vec })
+      .strict(),
+    interactive: z.boolean(),
+    animationClips: z.array(label).max(50).default([]),
+    clearance: z
+      .array(
+        z
+          .object({
+            id: label,
+            label,
+            kind: z.enum(["authored", "route"]),
+            center: vec,
+            size: dims3,
+            rotationEuler: vec,
+            cue: z
+              .object({ scenario: label, event: label })
+              .strict()
+              .optional(),
+            intersectsPlaceholder: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(200)
+      .default([]),
+    placementNotes: z.array(text).max(50).default([]),
+    scaleReference: z
+      .object({
+        asset: id,
+        label: label.optional(),
+        height: metres.optional(),
+      })
+      .strict()
+      .nullable(),
+    source: z
+      .object({
+        draftId: sha256,
+        storyboardId: label,
+        sceneId: label,
+        contentDigest: sha256,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type AssetSpec = z.infer<typeof assetSpec>;
+// A whole scene-rehearsal-asset-spec document. Only the fields Foundry reads
+// are checked; other fields (units, warnings, digests, piece cues) are ignored.
+export const rehearsalExport = z
+  .object({
+    format: z.literal("scene-rehearsal-asset-spec"),
+    version: z.literal(1),
+    source: z
+      .object({
+        draftId: sha256,
+        storyboardId: label,
+        sceneId: label,
+        contentDigest: sha256,
+      })
+      .passthrough(),
+    scaleReference: z
+      .object({ asset: id, label: label.optional(), height: metres.optional() })
+      .passthrough()
+      .nullable(),
+    pieces: z.array(z.object({ id: z.string() }).passthrough()).max(500),
+  })
+  .passthrough();
+export function specFromRehearsalExport(input: {
+  export: unknown;
+  pieceId: string;
+}): AssetSpec {
+  const exp = rehearsalExport.parse(input.export);
+  const piece = exp.pieces.find((p) => p.id === input.pieceId);
+  if (!piece) throw Error(`Rehearsal export has no piece "${input.pieceId}"`);
+  const { source, scaleReference: ref } = exp;
+  return assetSpec.parse({
+    version: 1,
+    dimensions: piece.dimensions,
+    pivot: piece.pivot,
+    interactive: piece.interactive,
+    animationClips: piece.animationClips,
+    clearance: piece.clearance,
+    placementNotes: piece.placementNotes,
+    scaleReference: ref && {
+      asset: ref.asset,
+      label: ref.label,
+      height: ref.height,
+    },
+    source: {
+      draftId: source.draftId,
+      storyboardId: source.storyboardId,
+      sceneId: source.sceneId,
+      contentDigest: source.contentDigest,
+    },
+  });
+}
 export const asset = z
   .object({
     id,
     categoryId: id,
     name: z.string().min(1).max(160),
     purpose: text,
-    rehearsal: rehearsalLink.optional(),
+    spec: assetSpec.optional(),
     base: z.object({ assetId: id, revisionId: id }).strict().optional(),
   })
   .strict();
@@ -186,12 +286,29 @@ export const operation = z.discriminatedUnion("type", [
       contentRevision: true,
     })
     .extend({ type: z.literal("scene-loom.pin") }),
-  z.object({ type: z.literal("task.set"), text }).strict(),
   z.strictObject({
-    type: z.literal("rehearsal.link"),
-    assetId: id,
-    link: rehearsalLink.nullable(),
+    type: z.literal("scene-loom.unpin"),
+    storyboardId: id,
+    suggestionId: id,
   }),
+  z.object({ type: z.literal("task.set"), text }).strict(),
+  z
+    .strictObject({
+      type: z.literal("asset.spec"),
+      assetId: id,
+      spec: assetSpec.nullable().optional(),
+      fromRehearsalExport: z
+        .object({ export: z.unknown(), pieceId: z.string().min(1).max(200) })
+        .strict()
+        .optional(),
+    })
+    .refine(
+      (op) =>
+        (op.spec !== undefined) !== (op.fromRehearsalExport !== undefined),
+      {
+        message: "asset.spec needs exactly one of spec or fromRehearsalExport",
+      },
+    ),
   z.strictObject({
     type: z.literal("finding.add"),
     id,

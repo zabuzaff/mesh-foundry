@@ -5,6 +5,21 @@ import {
   nextStage,
   type Revision,
 } from "../shared/progression";
+export function assetSpecText(p: Project, assetId: string, reviewer = false) {
+  const spec = p.assets.find((a) => a.id === assetId)?.spec;
+  if (!spec)
+    return reviewer
+      ? "No asset spec is recorded. Ask the owner for real-world dimensions and a scale-reference asset before making scale claims; do not invent them."
+      : "No asset spec is recorded. Ask the owner for real-world dimensions in metres and a scale-reference asset before modeling; do not invent them.";
+  const ref = spec.scaleReference?.asset;
+  const known = ref ? p.assets.find((a) => a.id === ref) : undefined;
+  const [w, h, d] = spec.dimensions;
+  const scale = ref
+    ? `Scale-reference asset: ${ref}${known ? ` (${known.name})` : " (not found in this project; ask the owner)"}${spec.scaleReference?.height ? `, reference height ${spec.scaleReference.height} m` : ""}.`
+    : "No scale-reference asset is recorded; ask the owner for one before making scale claims.";
+  return `Asset spec (version ${spec.version}, from Rehearsal; authoritative): ${JSON.stringify(spec)}
+Model to these real-world dimensions in metres (width ${w}, height ${h}, depth ${d}), with the origin at pivot ${spec.pivot.anchor} (${spec.pivot.position.join(", ")}), honoring the clearance volumes (route clearances must stay empty), placementNotes, and interactive/animationClips needs. ${scale}${reviewer ? ` Verify real-world scale of the exported GLB against the spec dimensions${ref ? ` and against the scale-reference asset ${ref}` : ""} in the same units; report any mismatch, clearance intrusion, wrong pivot or missing clip as a finding.` : ref ? ` Check scale against ${ref} before publishing.` : ""}`;
+}
 function revisionSource(p: Project, r: Revision) {
   const files = r.files.map((f) => ({
     id: f.id,
@@ -29,10 +44,12 @@ Before drawing, budget for the 30-file revision limit. Reserve eight slots for t
 For parts that benefit from separate modeling, create dedicated part drawings from the approved design. Choose angles that reveal construction and fit. For example, draw glasses separately from the face in front, side, and top views with the arms open. Draw hair on a plain head to show the fringe, cap, bun attachment, and nape. Draw clothing on a plain mannequin to reveal how seams, straps, and pockets connect. For other assets, use an isolated part or show it against a simple mounting surface, whichever makes its shape and fit clearer. Crops of the turnaround can support the drawings but do not count as dedicated part drawings. Label newly inferred geometry and flag consequential guesses for owner review. The full-asset views govern silhouette, scale, and placement.
 Publish a linked NEW revision for asset ${concept.assetId}: revision.publish with a new id, parentId ${concept.id}, stage sketch. Attach all eight separate images first in manifest order, then carry forward all approved detail images unchanged and append the new dedicated part drawings with descriptive detail- filenames, such as detail-glasses-profile.png. Summarize what the new views clarify and what needs review. Keep this candidate unapproved for creator review. Do not generate or publish 3D work as part of this request.`;
 }
-function prototypeInstructions(r: Revision) {
+function prototypeInstructions(p: Project, r: Revision) {
   const imageCount = r.files.filter((file) => file.kind === "image").length;
   return `Download, verify, open, and use all ${imageCount} image files in the exact concept manifest, including every view on any sheet. When the manifest includes an eight-view orthographic turnaround, use all eight full-asset views even if detail images are also attached. Use the cardinal views to establish proportions and depth, then use the diagonal views to check how the volumes join. Use dedicated part drawings to model construction and fit. Use any supporting crops to check the visible fit in context. The full-asset views govern silhouette, scale, and placement.
 When expanded views were inferred from an original sheet, follow the sketch parentId chain for this asset through any intervening detail or turnaround revisions to find the original design sheet. Verify its revision and file hashes against the project record and open its views. Those original views govern the design where inferred views conflict. If the original sheet cannot be identified or verified, flag that for the creator. Flag consequential contradictions and unresolved design choices for the creator.
+
+${assetSpecText(p, r.assetId)}
 
 Translate the approved design into real, rotatable 3D geometry in Blender. Work in three passes:
 1. Plain mannequin. Block out the neutral stance, head, torso, limbs, hands, and feet without hair, facial features, glasses, or clothes. Overlay the front and profile references where available. Correct silhouette, proportions, placement, and depth before adding character shapes. For a non-character asset, block out its main volumes in the approved configuration.
@@ -48,7 +65,7 @@ export function revisionAction(p: Project, r: Revision, advance = false) {
     throw Error(`Approve exact revision ${r.id} before advancing`);
   return `${revisionSource(p, r)}
 Reread current state before work and again before publication. ${advance ? `Verify the latest explicit owner approval for this asset's ${r.stage} stage still names exact revision ${r.id}; otherwise stop and ask the creator to approve it in Mesh Foundry. Never approve on the creator's behalf.` : "Improve this selected revision using the creator's direction and current feedback; approval is not required for revision work."}
-${!advance ? "Refine the selected work in its existing stage and preserve its design intent. If no direction was added, prioritize open feedback. If there is none, identify and make a useful bounded improvement consistent with confirmed decisions." : r.stage === "sketch" ? prototypeInstructions(r) : "Download and refine the exact existing editable Blender source, geometry, recipes and textures listed above; do not recreate it from screenshots. Preserve the approved design and explain changes. Establish relevant production requirements with the creator (intended use, target environment, scale, geometry/material/texture budgets and export needs) before claiming readiness. Rigging and animation are needed only if the asset's intended use requires them."}
+${!advance ? "Refine the selected work in its existing stage and preserve its design intent. If no direction was added, prioritize open feedback. If there is none, identify and make a useful bounded improvement consistent with confirmed decisions." : r.stage === "sketch" ? prototypeInstructions(p, r) : "Download and refine the exact existing editable Blender source, geometry, recipes and textures listed above; do not recreate it from screenshots. Preserve the approved design and explain changes. Establish relevant production requirements with the creator (intended use, target environment, scale, geometry/material/texture budgets and export needs) before claiming readiness. Rigging and animation are needed only if the asset's intended use requires them."}
 Publish a linked NEW revision for asset ${r.assetId}: revision.publish with a new id, parentId ${r.id}, stage ${target}. Preserve all previous revisions, source files, decisions and feedback. Explain changes and limitations in the summary. New revisions remain unapproved candidates. Stage approval never guarantees production readiness. Work only on this selected asset; do not advance other assets.`;
 }
 export function correctionAction(p: Project, r: Revision) {
@@ -96,6 +113,8 @@ ${prototype.stage === "model" && parent && parent.stage !== "sketch" ? `Developm
 ${concept?.stage === "sketch" ? revisionSource(p, concept) : "This candidate has no traceable sketch ancestor. Report the provenance gap and ask for the intended reference before making concept fidelity claims."}
 
 Read ${repo}/AGENTS.md and ${repo}/docs/agent-interface.md. From ${repo}, set MESH_FOUNDRY_DATA_DIR to ${JSON.stringify(dataRoot)} and run npm --silent run cli -- read ${p.id}. Check the prototype lineage, approval history, decisions, and owner feedback. Verify downloaded file hashes using the local service. Use the linked concept and its detail sheets. If newer concept approval differs, report it without silently switching references. Follow the sketch ancestry to the original views where inferred angles disagree.
+
+${assetSpecText(p, prototype.assetId, true)}
 
 Load the exact published GLB. Inspect front, sides, back, and relevant three-quarter angles against matching reference views. Check silhouette, proportions, joins, part fit, and the exported colors and material assignments using the GLB's actual materials. Use neutral shading as an additional geometry check. Prioritize visible problems and distinguish observed appearance from suspected mesh causes and subjective preferences.
 
